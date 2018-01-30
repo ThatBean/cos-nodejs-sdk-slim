@@ -1,0 +1,8 @@
+# source files
+**/*-gitignore/**
+/.*
+/*.tgz
+/*.lock
+/demo
+/test
+/sdk

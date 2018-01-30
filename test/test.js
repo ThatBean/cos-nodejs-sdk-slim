@@ -1,7 +1,7 @@
 var fs = require('fs');
 var path = require('path');
-var COS = require('../index');
-var request = require('request');
+var request = require('http').request;
+var COS = require('../sdk/cos');
 var util = require('../demo/util');
 var config = require('../demo/config');
 var Writable = require('stream').Writable;
@@ -124,10 +124,14 @@ describe('getAuth()', function () {
                 });
                 var link = 'http://' + BucketLongName + '.cos.' + config.Region + '.myqcloud.com/' + key +
                     '?sign=' + encodeURIComponent(auth);
-                request(link, function (err, response, body) {
+                request(link, function (response) {
                     assert.ok(response.statusCode === 200);
-                    assert.ok(body === content);
-                    done();
+                    let rawData = ''
+                    response.on('data', (chunk) => { rawData += chunk; });
+                    response.on('end', () => {
+                      assert.ok(Buffer.from(rawData) === content);
+                      done();
+                    });
                 });
             });
         }).catch(function () {

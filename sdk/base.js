@@ -1,8 +1,8 @@
-var queryString = require('querystring');
 var pkg = require('../package.json');
-var REQUEST = require('request');
 var util = require('./util');
+var slimRequest = require('./slimRequest');
 var fs = require('fs');
+// var URLSearchParams = require('url').URLSearchParams;
 
 
 // Bucket 相关
@@ -146,757 +146,757 @@ function getBucket(params, callback) {
     });
 }
 
-/**
- * 创建 Bucket，并初始化访问权限
- * @param  {Object}  params                         参数对象，必须
- *     @param  {String}  params.Bucket              Bucket名称，必须
- *     @param  {String}  params.Region              地域名称，必须
- *     @param  {String}  params.ACL                 用户自定义文件权限，可以设置：private，public-read；默认值：private，非必须
- *     @param  {String}  params.GrantRead           赋予被授权者读的权限，格式x-cos-grant-read: uin=" ",uin=" "，非必须
- *     @param  {String}  params.GrantWrite          赋予被授权者写的权限，格式x-cos-grant-write: uin=" ",uin=" "，非必须
- *     @param  {String}  params.GrantFullControl    赋予被授权者读写权限，格式x-cos-grant-full-control: uin=" ",uin=" "，非必须
- * @param  {Function}  callback                     回调函数，必须
- * @return  {Object}  err                           请求失败的错误，如果请求成功，则为空。
- * @return  {Object}  data                          返回的数据
- *     @return  {String}  data.Location             操作地址
- */
-function putBucket(params, callback) {
-    var self = this;
-    var headers = {};
-    headers['x-cos-acl'] = params['ACL'];
-    headers['x-cos-grant-read'] = params['GrantRead'];
-    headers['x-cos-grant-write'] = params['GrantWrite'];
-    headers['x-cos-grant-read-acp'] = params['GrantReadAcp'];
-    headers['x-cos-grant-write-acp'] = params['GrantWriteAcp'];
-    headers['x-cos-grant-full-control'] = params['GrantFullControl'];
-    submitRequest.call(this, {
-        method: 'PUT',
-        Bucket: params.Bucket,
-        Region: params.Region,
-        headers: headers,
-    }, function (err, data) {
-        if (err) {
-            return callback(err);
-        }
-        var url = getUrl({
-            domain: self.options.Domain,
-            bucket: params.Bucket,
-            region: params.Region,
-            isLocation: true,
-        });
-        callback(null, {
-            Location: url,
-            statusCode: data.statusCode,
-            headers: data.headers,
-        });
-    });
-}
-
-/**
- * 删除 Bucket
- * @param  {Object}  params                 参数对象，必须
- *     @param  {String}  params.Bucket      Bucket名称，必须
- *     @param  {String}  params.Region      地域名称，必须
- * @param  {Function}  callback             回调函数，必须
- * @return  {Object}  err                   请求失败的错误，如果请求成功，则为空。
- * @return  {Object}  data                  返回的数据
- *     @return  {String}  data.Location     操作地址
- */
-function deleteBucket(params, callback) {
-    submitRequest.call(this, {
-        method: 'DELETE',
-        Bucket: params.Bucket,
-        Region: params.Region,
-    }, function (err, data) {
-        if (err && err.statusCode === 204) {
-            return callback(null, {statusCode: err.statusCode});
-        } else if (err) {
-            return callback(err);
-        }
-        callback(null, {
-            statusCode: data.statusCode,
-            headers: data.headers,
-        });
-    });
-}
-
-/**
- * 获取 Bucket 的 权限列表
- * @param  {Object}  params                         参数对象，必须
- *     @param  {String}  params.Bucket              Bucket名称，必须
- *     @param  {String}  params.Region              地域名称，必须
- * @param  {Function}  callback                     回调函数，必须
- * @return  {Object}  err                           请求失败的错误，如果请求成功，则为空。
- * @return  {Object}  data                          返回的数据
- *     @return  {Object}  data.AccessControlPolicy  访问权限信息
- */
-function getBucketAcl(params, callback) {
-    submitRequest.call(this, {
-        method: 'GET',
-        Bucket: params.Bucket,
-        Region: params.Region,
-        action: '/?acl',
-    }, function (err, data) {
-        if (err) {
-            return callback(err);
-        }
-        var Owner = data.AccessControlPolicy.Owner || {};
-        var Grant = data.AccessControlPolicy.AccessControlList.Grant || [];
-        Grant = util.isArray(Grant) ? Grant : [Grant];
-        var result = decodeAcl(data.AccessControlPolicy);
-        if (data.headers && data.headers['x-cos-acl']) {
-            result.ACL = data.headers['x-cos-acl'];
-        }
-        result = util.extend(result, {
-            Owner: Owner,
-            Grants: Grant,
-            statusCode: data.statusCode,
-            headers: data.headers,
-        });
-        callback(null, result);
-    });
-}
-
-/**
- * 设置 Bucket 的 权限列表
- * @param  {Object}  params                         参数对象，必须
- *     @param  {String}  params.Bucket              Bucket名称，必须
- *     @param  {String}  params.Region              地域名称，必须
- *     @param  {String}  params.ACL                 用户自定义文件权限，可以设置：private，public-read；默认值：private，非必须
- *     @param  {String}  params.GrantRead           赋予被授权者读的权限，格式x-cos-grant-read: uin=" ",uin=" "，非必须
- *     @param  {String}  params.GrantWrite          赋予被授权者写的权限，格式x-cos-grant-write: uin=" ",uin=" "，非必须
- *     @param  {String}  params.GrantFullControl    赋予被授权者读写权限，格式x-cos-grant-full-control: uin=" ",uin=" "，非必须
- * @param  {Function}  callback                     回调函数，必须
- * @return  {Object}  err                           请求失败的错误，如果请求成功，则为空。
- * @return  {Object}  data                          返回的数据
- */
-function putBucketAcl(params, callback) {
-    var headers = {};
-
-    headers['x-cos-acl'] = params['ACL'];
-    headers['x-cos-grant-read'] = params['GrantRead'];
-    headers['x-cos-grant-write'] = params['GrantWrite'];
-    headers['x-cos-grant-read-acp'] = params['GrantReadAcp'];
-    headers['x-cos-grant-write-acp'] = params['GrantWriteAcp'];
-    headers['x-cos-grant-full-control'] = params['GrantFullControl'];
-
-    var xml = '';
-    if (params['AccessControlPolicy']) {
-        var AccessControlPolicy = util.clone(params['AccessControlPolicy'] || {});
-        var Grants = AccessControlPolicy.Grants || AccessControlPolicy.Grant;
-        Grants = util.isArray(Grants) ? Grants : [Grants];
-        delete AccessControlPolicy.Grant;
-        delete AccessControlPolicy.Grants;
-        AccessControlPolicy.AccessControlList = {Grant: Grants};
-        xml = util.json2xml({AccessControlPolicy: AccessControlPolicy});
-        headers['Content-MD5'] = util.binaryBase64(util.md5(xml));
-        headers['Content-Type'] = 'application/xml';
-    }
-
-    submitRequest.call(this, {
-        method: 'PUT',
-        Bucket: params.Bucket,
-        Region: params.Region,
-        action: '/?acl',
-        headers: headers,
-        body: xml,
-    }, function (err, data) {
-        if (err) {
-            return callback(err);
-        }
-        callback(null, {
-            statusCode: data.statusCode,
-            headers: data.headers,
-        });
-    });
-}
-
-/**
- * 获取 Bucket 的 跨域设置
- * @param  {Object}  params                         参数对象，必须
- *     @param  {String}  params.Bucket              Bucket名称，必须
- *     @param  {String}  params.Region              地域名称，必须
- * @param  {Function}  callback                     回调函数，必须
- * @return  {Object}  err                           请求失败的错误，如果请求成功，则为空。
- * @return  {Object}  data                          返回的数据
- *     @return  {Object}  data.CORSRules            Bucket的跨域设置
- */
-function getBucketCors(params, callback) {
-    submitRequest.call(this, {
-        method: 'GET',
-        Bucket: params.Bucket,
-        Region: params.Region,
-        action: '/?cors',
-    }, function (err, data) {
-        if (err) {
-            if (err.statusCode === 404 && err.error && err.error.Code === 'NoSuchCORSConfiguration') {
-                var result = {
-                    CORSRules: [],
-                    statusCode: err.statusCode,
-                };
-                err.headers && (result.headers = err.headers);
-                callback(null, result);
-            } else {
-                callback(err);
-            }
-            return;
-        }
-        var CORSConfiguration = data.CORSConfiguration || {};
-        var CORSRules = CORSConfiguration.CORSRules || CORSConfiguration.CORSRule || [];
-        CORSRules = util.clone(util.isArray(CORSRules) ? CORSRules : [CORSRules]);
-
-        util.each(CORSRules, function (rule) {
-            util.each(['AllowedOrigin', 'AllowedHeader', 'AllowedMethod', 'ExposeHeader'], function (key, j) {
-                var sKey = key + 's';
-                var val = rule[sKey] || rule[key] || [];
-                delete rule[key];
-                rule[sKey] = util.isArray(val) ? val : [val];
-            });
-        });
-
-        callback(null, {
-            CORSRules: CORSRules,
-            statusCode: data.statusCode,
-            headers: data.headers,
-        });
-    });
-}
-
-/**
- * 设置 Bucket 的 跨域设置
- * @param  {Object}  params                             参数对象，必须
- *     @param  {String}  params.Bucket                  Bucket名称，必须
- *     @param  {String}  params.Region                  地域名称，必须
- *     @param  {Object}  params.CORSConfiguration       相关的跨域设置，必须
- * @param  {Array}  params.CORSConfiguration.CORSRules  对应的跨域规则
- * @param  {Function}  callback                         回调函数，必须
- * @return  {Object}  err                               请求失败的错误，如果请求成功，则为空。
- * @return  {Object}  data                              返回的数据
- */
-function putBucketCors(params, callback) {
-
-    var CORSConfiguration = params['CORSConfiguration'] || {};
-    var CORSRules = CORSConfiguration['CORSRules'] || params['CORSRules'] || [];
-    CORSRules = util.clone(util.isArray(CORSRules) ? CORSRules : [CORSRules]);
-    util.each(CORSRules, function (rule) {
-        util.each(['AllowedOrigin', 'AllowedHeader', 'AllowedMethod', 'ExposeHeader'], function (key, k) {
-            var sKey = key + 's';
-            var val = rule[sKey] || rule[key] || [];
-            delete rule[sKey];
-            rule[key] = util.isArray(val) ? val : [val];
-        });
-    });
-
-    var xml = util.json2xml({CORSConfiguration: {CORSRule: CORSRules}});
-    var headers = {};
-    headers['Content-MD5'] = util.binaryBase64(util.md5(xml));
-    headers['Content-Type'] = 'application/xml';
-
-    submitRequest.call(this, {
-        method: 'PUT',
-        Bucket: params.Bucket,
-        Region: params.Region,
-        body: xml,
-        action: '/?cors',
-        headers: headers,
-    }, function (err, data) {
-        if (err) {
-            return callback(err);
-        }
-        callback(null, {
-            statusCode: data.statusCode,
-            headers: data.headers,
-        });
-    });
-}
-
-/**
- * 删除 Bucket 的 跨域设置
- * @param  {Object}  params                 参数对象，必须
- *     @param  {String}  params.Bucket      Bucket名称，必须
- *     @param  {String}  params.Region      地域名称，必须
- * @param  {Function}  callback             回调函数，必须
- * @return  {Object}  err                   请求失败的错误，如果请求成功，则为空。
- * @return  {Object}  data                  返回的数据
- */
-function deleteBucketCors(params, callback) {
-    submitRequest.call(this, {
-        method: 'DELETE',
-        Bucket: params.Bucket,
-        Region: params.Region,
-        action: '/?cors',
-    }, function (err, data) {
-        if (err && err.statusCode === 204) {
-            return callback(null, {statusCode: err.statusCode});
-        } else if (err) {
-            return callback(err);
-        }
-        callback(null, {
-            statusCode: data.statusCode || err.statusCode,
-            headers: data.headers,
-        });
-    });
-}
-
-function putBucketPolicy(params, callback) {
-    var headers = {};
-    var Policy = params['Policy'];
-    var PolicyStr = Policy;
-    try {
-        if (typeof Policy === 'string') {
-            Policy = JSON.parse(PolicyStr);
-        } else {
-            PolicyStr = JSON.stringify(Policy);
-        }
-    } catch (e) {
-        callback({error: 'Policy format error'});
-    }
-
-    headers['Content-Type'] = 'application/json';
-    headers['Content-MD5'] = util.binaryBase64(util.md5(PolicyStr));
-
-    submitRequest.call(this, {
-        method: 'PUT',
-        Bucket: params.Bucket,
-        Region: params.Region,
-        action: '/?policy',
-        body: util.isBrowser ? PolicyStr : Policy,
-        headers: headers,
-        json: true,
-    }, function (err, data) {
-        if (err && err.statusCode === 204) {
-            return callback(null, {statusCode: err.statusCode});
-        } else if (err) {
-            return callback(err);
-        }
-        callback(null, {
-            statusCode: data.statusCode,
-            headers: data.headers,
-        });
-    });
-}
-
-/**
- * 获取 Bucket 的 地域信息
- * @param  {Object}  params             参数对象，必须
- *     @param  {String}  params.Bucket  Bucket名称，必须
- *     @param  {String}  params.Region  地域名称，必须
- * @param  {Function}  callback         回调函数，必须
- * @return  {Object}  err               请求失败的错误，如果请求成功，则为空。
- * @return  {Object}  data              返回数据，包含地域信息 LocationConstraint
- */
-function getBucketLocation(params, callback) {
-    submitRequest.call(this, {
-        method: 'GET',
-        Bucket: params.Bucket,
-        Region: params.Region,
-        action: '/?location',
-    }, function (err, data) {
-        if (err) {
-            return callback(err);
-        }
-        callback(null, data);
-    });
-}
-
-/**
- * 获取 Bucket 的读取权限策略
- * @param  {Object}  params             参数对象，必须
- *     @param  {String}  params.Bucket  Bucket名称，必须
- *     @param  {String}  params.Region  地域名称，必须
- * @param  {Function}  callback         回调函数，必须
- * @return  {Object}  err               请求失败的错误，如果请求成功，则为空。
- * @return  {Object}  data              返回数据
- */
-function getBucketPolicy(params, callback) {
-    submitRequest.call(this, {
-        method: 'GET',
-        Bucket: params.Bucket,
-        Region: params.Region,
-        action: '/?policy',
-        rawBody: true,
-    }, function (err, data) {
-        if (err) {
-            if (err.statusCode && err.statusCode === 403) {
-                return callback({ErrorStatus: 'Access Denied'});
-            }
-            if (err.statusCode && err.statusCode === 405) {
-                return callback({ErrorStatus: 'Method Not Allowed'});
-            }
-            if (err.statusCode && err.statusCode === 404) {
-                return callback({ErrorStatus: 'Policy Not Found'});
-            }
-            return callback(err);
-        }
-        var Policy = {};
-        try {
-            Policy = JSON.parse(data.body);
-        } catch (e) {
-        }
-        callback(null, {
-            Policy: Policy,
-            statusCode: data.statusCode,
-            headers: data.headers,
-        });
-    });
-}
-
-/**
- * 获取 Bucket 的标签设置
- * @param  {Object}  params             参数对象，必须
- *     @param  {String}  params.Bucket  Bucket名称，必须
- *     @param  {String}  params.Region  地域名称，必须
- * @param  {Function}  callback         回调函数，必须
- * @return  {Object}  err               请求失败的错误，如果请求成功，则为空。
- * @return  {Object}  data              返回数据
- */
-function getBucketTagging(params, callback) {
-    submitRequest.call(this, {
-        method: 'GET',
-        Bucket: params.Bucket,
-        Region: params.Region,
-        action: '/?tagging',
-    }, function (err, data) {
-        if (err) {
-            if (err.statusCode === 404 && err.error && (err.error === "Not Found" || err.error.Code === 'NoSuchTagSet')) {
-                var result = {
-                    Tags: [],
-                    statusCode: err.statusCode,
-                };
-                err.headers && (result.headers = err.headers);
-                callback(null, result);
-            } else {
-                callback(err);
-            }
-            return;
-        }
-        var Tags = [];
-        try {
-            Tags = data.Tagging.TagSet.Tag || [];
-        } catch (e) {
-        }
-        Tags = util.clone(util.isArray(Tags) ? Tags : [Tags]);
-        callback(null, {
-            Tags: Tags,
-            statusCode: data.statusCode,
-            headers: data.headers,
-        });
-    });
-}
-
-/**
- * 设置 Bucket 的标签
- * @param  {Object}  params             参数对象，必须
- *     @param  {String}  params.Bucket  Bucket名称，必须
- *     @param  {String}  params.Region  地域名称，必须
- *     @param  {Array}   params.TagSet  标签设置，必须
- * @param  {Function}  callback         回调函数，必须
- * @return  {Object}  err               请求失败的错误，如果请求成功，则为空。
- * @return  {Object}  data              返回数据
- */
-function putBucketTagging(params, callback) {
-
-    var Tagging = params['Tagging'] || {};
-    var Tags = Tagging.TagSet || Tagging.Tags || params['Tags'] || [];
-    Tags = util.clone(util.isArray(Tags) ? Tags : [Tags]);
-    var xml = util.json2xml({Tagging: {TagSet: {Tag: Tags}}});
-
-    var headers = {};
-    headers['Content-Type'] = 'application/xml';
-    headers['Content-MD5'] = util.binaryBase64(util.md5(xml));
-
-    submitRequest.call(this, {
-        method: 'PUT',
-        Bucket: params.Bucket,
-        Region: params.Region,
-        body: xml,
-        action: '/?tagging',
-        headers: headers,
-    }, function (err, data) {
-        if (err && err.statusCode === 204) {
-            return callback(null, {statusCode: err.statusCode});
-        } else if (err) {
-            return callback(err);
-        }
-        callback(null, {
-            statusCode: data.statusCode,
-            headers: data.headers,
-        });
-    });
-}
-
-
-/**
- * 删除 Bucket 的 标签设置
- * @param  {Object}  params             参数对象，必须
- *     @param  {String}  params.Bucket  Bucket名称，必须
- *     @param  {String}  params.Region  地域名称，必须
- * @param  {Function}  callback         回调函数，必须
- * @return  {Object}  err               请求失败的错误，如果请求成功，则为空。
- * @return  {Object}  data              返回的数据
- */
-function deleteBucketTagging(params, callback) {
-    submitRequest.call(this, {
-        method: 'DELETE',
-        Bucket: params.Bucket,
-        Region: params.Region,
-        action: '/?tagging',
-    }, function (err, data) {
-        if (err && err.statusCode === 204) {
-            return callback(null, {statusCode: err.statusCode});
-        } else if (err) {
-            return callback(err);
-        }
-        callback(null, {
-            statusCode: data.statusCode,
-            headers: data.headers,
-        });
-    });
-}
-
-function putBucketLifecycle(params, callback) {
-
-    var LifecycleConfiguration = params['LifecycleConfiguration'] || {};
-    var Rules = LifecycleConfiguration.Rules || [];
-    Rules = util.clone(Rules);
-    var xml = util.json2xml({LifecycleConfiguration: {Rule: Rules}});
-
-    var headers = {};
-    headers['Content-Type'] = 'application/xml';
-    headers['Content-MD5'] = util.binaryBase64(util.md5(xml));
-
-    submitRequest.call(this, {
-        method: 'PUT',
-        Bucket: params.Bucket,
-        Region: params.Region,
-        body: xml,
-        action: '/?lifecycle',
-        headers: headers,
-    }, function (err, data) {
-        if (err && err.statusCode === 204) {
-            return callback(null, {statusCode: err.statusCode});
-        } else if (err) {
-            return callback(err);
-        }
-        callback(null, {
-            statusCode: data.statusCode,
-            headers: data.headers,
-        });
-    });
-}
-
-function getBucketLifecycle(params, callback) {
-    submitRequest.call(this, {
-        method: 'GET',
-        Bucket: params.Bucket,
-        Region: params.Region,
-        action: '/?lifecycle',
-    }, function (err, data) {
-        if (err) {
-            if (err.statusCode === 404 && err.error && err.error.Code === 'NoSuchLifecycleConfiguration') {
-                var result = {
-                    Rules: [],
-                    statusCode: err.statusCode,
-                };
-                err.headers && (result.headers = err.headers);
-                callback(null, result);
-            } else {
-                callback(err);
-            }
-            return;
-        }
-        var Rules = [];
-        try {
-            Rules = data.LifecycleConfiguration.Rule || [];
-        } catch (e) {
-        }
-        Rules = util.clone(util.isArray(Rules) ? Rules : [Rules]);
-        callback(null, {
-            Rules: Rules,
-            statusCode: data.statusCode,
-            headers: data.headers,
-        });
-    });
-}
-
-function deleteBucketLifecycle(params, callback) {
-    submitRequest.call(this, {
-        method: 'DELETE',
-        Bucket: params.Bucket,
-        Region: params.Region,
-        action: '/?lifecycle',
-    }, function (err, data) {
-        if (err && err.statusCode === 204) {
-            return callback(null, {statusCode: err.statusCode});
-        } else if (err) {
-            return callback(err);
-        }
-        callback(null, {
-            statusCode: data.statusCode,
-            headers: data.headers,
-        });
-    });
-}
-
-function putBucketVersioning(params, callback) {
-    var VersioningConfiguration = params['VersioningConfiguration'] || {};
-    var xml = util.json2xml({VersioningConfiguration: VersioningConfiguration});
-
-    var headers = {};
-    headers['x-cos-mfa'] = params.MFA;
-    headers['Content-Type'] = 'application/xml';
-    headers['Content-MD5'] = util.binaryBase64(util.md5(xml));
-
-    submitRequest.call(this, {
-        method: 'PUT',
-        Bucket: params.Bucket,
-        Region: params.Region,
-        body: xml,
-        action: '/?versioning',
-        headers: headers,
-    }, function (err, data) {
-        if (err && err.statusCode === 204) {
-            return callback(null, {statusCode: err.statusCode});
-        } else if (err) {
-            return callback(err);
-        }
-        callback(null, {
-            statusCode: data.statusCode,
-            headers: data.headers,
-        });
-    });
-}
-
-function getBucketVersioning(params, callback) {
-    submitRequest.call(this, {
-        method: 'GET',
-        Bucket: params.Bucket,
-        Region: params.Region,
-        action: '/?versioning',
-    }, function (err, data) {
-        if (!err) {
-            !data.VersioningConfiguration && (data.VersioningConfiguration = {});
-            !data.VersioningConfiguration.MFADelete && (data.VersioningConfiguration.MFADelete = 'Disabled');
-            !data.VersioningConfiguration.Status && (data.VersioningConfiguration.Status = 'Disabled');
-        }
-        callback(err, data);
-    });
-}
-
-function putBucketReplication(params, callback) {
-    var ReplicationConfiguration = util.clone(params.ReplicationConfiguration);
-    ReplicationConfiguration.Rule = ReplicationConfiguration.Rules;
-    delete ReplicationConfiguration.Rules;
-    var xml = util.json2xml({ReplicationConfiguration: ReplicationConfiguration});
-
-    var headers = {};
-    headers['Content-Type'] = 'application/xml';
-    headers['Content-MD5'] = util.binaryBase64(util.md5(xml));
-
-    submitRequest.call(this, {
-        method: 'PUT',
-        Bucket: params.Bucket,
-        Region: params.Region,
-        body: xml,
-        action: '/?replication',
-        headers: headers,
-    }, function (err, data) {
-        if (err && err.statusCode === 204) {
-            return callback(null, {statusCode: err.statusCode});
-        } else if (err) {
-            return callback(err);
-        }
-        callback(null, {
-            statusCode: data.statusCode,
-            headers: data.headers,
-        });
-    });
-}
-
-function getBucketReplication(params, callback) {
-    submitRequest.call(this, {
-        method: 'GET',
-        Bucket: params.Bucket,
-        Region: params.Region,
-        action: '/?replication',
-    }, function (err, data) {
-        if (err) {
-            if (err.statusCode === 404 && err.error && (err.error === 'Not Found' || err.error.Code === 'ReplicationConfigurationnotFoundError')) {
-                var result = {
-                    ReplicationConfiguration: {Rules: []},
-                    statusCode: err.statusCode,
-                };
-                err.headers && (result.headers = err.headers);
-                callback(null, result);
-            } else {
-                callback(err);
-            }
-            return;
-        }
-        if (!err) {
-            !data.ReplicationConfiguration && (data.ReplicationConfiguration = {});
-        }
-        callback(err, data);
-    });
-}
-
-function deleteBucketReplication(params, callback) {
-    submitRequest.call(this, {
-        method: 'DELETE',
-        Bucket: params.Bucket,
-        Region: params.Region,
-        action: '/?replication',
-    }, function (err, data) {
-        if (err && err.statusCode === 204) {
-            return callback(null, {statusCode: err.statusCode});
-        } else if (err) {
-            return callback(err);
-        }
-        callback(null, {
-            statusCode: data.statusCode,
-            headers: data.headers,
-        });
-    });
-}
-
-// Object 相关
-
-/**
- * 取回对应Object的元数据，Head的权限与Get的权限一致
- * @param  {Object}  params                         参数对象，必须
- *     @param  {String}  params.Bucket              Bucket名称，必须
- *     @param  {String}  params.Region              地域名称，必须
- *     @param  {String}  params.Key                 文件名称，必须
- *     @param  {String}  params.IfModifiedSince     当Object在指定时间后被修改，则返回对应Object元信息，否则返回304，非必须
- * @param  {Function}  callback                     回调函数，必须
- * @return  {Object}  err                           请求失败的错误，如果请求成功，则为空。
- * @return  {Object}  data                          为指定 object 的元数据，如果设置了 IfModifiedSince ，且文件未修改，则返回一个对象，NotModified 属性为 true
- *     @return  {Boolean}  data.NotModified         是否在 IfModifiedSince 时间点之后未修改该 object，则为 true
- */
-function headObject(params, callback) {
-    var headers = {};
-    headers['If-Modified-Since'] = params['IfModifiedSince'];
-
-    submitRequest.call(this, {
-        method: 'HEAD',
-        Bucket: params.Bucket,
-        Region: params.Region,
-        Key: params.Key,
-        headers: headers,
-    }, function (err, data) {
-        if (err) {
-            var statusCode = err.statusCode;
-            if (headers['If-Modified-Since'] && statusCode && statusCode === 304) {
-                return callback(null, {
-                    NotModified: true,
-                    statusCode: statusCode,
-                });
-            }
-            return callback(err);
-        }
-        callback(null, data);
-    });
-}
+// /**
+//  * 创建 Bucket，并初始化访问权限
+//  * @param  {Object}  params                         参数对象，必须
+//  *     @param  {String}  params.Bucket              Bucket名称，必须
+//  *     @param  {String}  params.Region              地域名称，必须
+//  *     @param  {String}  params.ACL                 用户自定义文件权限，可以设置：private，public-read；默认值：private，非必须
+//  *     @param  {String}  params.GrantRead           赋予被授权者读的权限，格式x-cos-grant-read: uin=" ",uin=" "，非必须
+//  *     @param  {String}  params.GrantWrite          赋予被授权者写的权限，格式x-cos-grant-write: uin=" ",uin=" "，非必须
+//  *     @param  {String}  params.GrantFullControl    赋予被授权者读写权限，格式x-cos-grant-full-control: uin=" ",uin=" "，非必须
+//  * @param  {Function}  callback                     回调函数，必须
+//  * @return  {Object}  err                           请求失败的错误，如果请求成功，则为空。
+//  * @return  {Object}  data                          返回的数据
+//  *     @return  {String}  data.Location             操作地址
+//  */
+// function putBucket(params, callback) {
+//     var self = this;
+//     var headers = {};
+//     headers['x-cos-acl'] = params['ACL'];
+//     headers['x-cos-grant-read'] = params['GrantRead'];
+//     headers['x-cos-grant-write'] = params['GrantWrite'];
+//     headers['x-cos-grant-read-acp'] = params['GrantReadAcp'];
+//     headers['x-cos-grant-write-acp'] = params['GrantWriteAcp'];
+//     headers['x-cos-grant-full-control'] = params['GrantFullControl'];
+//     submitRequest.call(this, {
+//         method: 'PUT',
+//         Bucket: params.Bucket,
+//         Region: params.Region,
+//         headers: headers,
+//     }, function (err, data) {
+//         if (err) {
+//             return callback(err);
+//         }
+//         var url = getUrl({
+//             domain: self.options.Domain,
+//             bucket: params.Bucket,
+//             region: params.Region,
+//             isLocation: true,
+//         });
+//         callback(null, {
+//             Location: url,
+//             statusCode: data.statusCode,
+//             headers: data.headers,
+//         });
+//     });
+// }
+//
+// /**
+//  * 删除 Bucket
+//  * @param  {Object}  params                 参数对象，必须
+//  *     @param  {String}  params.Bucket      Bucket名称，必须
+//  *     @param  {String}  params.Region      地域名称，必须
+//  * @param  {Function}  callback             回调函数，必须
+//  * @return  {Object}  err                   请求失败的错误，如果请求成功，则为空。
+//  * @return  {Object}  data                  返回的数据
+//  *     @return  {String}  data.Location     操作地址
+//  */
+// function deleteBucket(params, callback) {
+//     submitRequest.call(this, {
+//         method: 'DELETE',
+//         Bucket: params.Bucket,
+//         Region: params.Region,
+//     }, function (err, data) {
+//         if (err && err.statusCode === 204) {
+//             return callback(null, {statusCode: err.statusCode});
+//         } else if (err) {
+//             return callback(err);
+//         }
+//         callback(null, {
+//             statusCode: data.statusCode,
+//             headers: data.headers,
+//         });
+//     });
+// }
+//
+// /**
+//  * 获取 Bucket 的 权限列表
+//  * @param  {Object}  params                         参数对象，必须
+//  *     @param  {String}  params.Bucket              Bucket名称，必须
+//  *     @param  {String}  params.Region              地域名称，必须
+//  * @param  {Function}  callback                     回调函数，必须
+//  * @return  {Object}  err                           请求失败的错误，如果请求成功，则为空。
+//  * @return  {Object}  data                          返回的数据
+//  *     @return  {Object}  data.AccessControlPolicy  访问权限信息
+//  */
+// function getBucketAcl(params, callback) {
+//     submitRequest.call(this, {
+//         method: 'GET',
+//         Bucket: params.Bucket,
+//         Region: params.Region,
+//         action: '/?acl',
+//     }, function (err, data) {
+//         if (err) {
+//             return callback(err);
+//         }
+//         var Owner = data.AccessControlPolicy.Owner || {};
+//         var Grant = data.AccessControlPolicy.AccessControlList.Grant || [];
+//         Grant = util.isArray(Grant) ? Grant : [Grant];
+//         var result = decodeAcl(data.AccessControlPolicy);
+//         if (data.headers && data.headers['x-cos-acl']) {
+//             result.ACL = data.headers['x-cos-acl'];
+//         }
+//         result = util.extend(result, {
+//             Owner: Owner,
+//             Grants: Grant,
+//             statusCode: data.statusCode,
+//             headers: data.headers,
+//         });
+//         callback(null, result);
+//     });
+// }
+//
+// /**
+//  * 设置 Bucket 的 权限列表
+//  * @param  {Object}  params                         参数对象，必须
+//  *     @param  {String}  params.Bucket              Bucket名称，必须
+//  *     @param  {String}  params.Region              地域名称，必须
+//  *     @param  {String}  params.ACL                 用户自定义文件权限，可以设置：private，public-read；默认值：private，非必须
+//  *     @param  {String}  params.GrantRead           赋予被授权者读的权限，格式x-cos-grant-read: uin=" ",uin=" "，非必须
+//  *     @param  {String}  params.GrantWrite          赋予被授权者写的权限，格式x-cos-grant-write: uin=" ",uin=" "，非必须
+//  *     @param  {String}  params.GrantFullControl    赋予被授权者读写权限，格式x-cos-grant-full-control: uin=" ",uin=" "，非必须
+//  * @param  {Function}  callback                     回调函数，必须
+//  * @return  {Object}  err                           请求失败的错误，如果请求成功，则为空。
+//  * @return  {Object}  data                          返回的数据
+//  */
+// function putBucketAcl(params, callback) {
+//     var headers = {};
+//
+//     headers['x-cos-acl'] = params['ACL'];
+//     headers['x-cos-grant-read'] = params['GrantRead'];
+//     headers['x-cos-grant-write'] = params['GrantWrite'];
+//     headers['x-cos-grant-read-acp'] = params['GrantReadAcp'];
+//     headers['x-cos-grant-write-acp'] = params['GrantWriteAcp'];
+//     headers['x-cos-grant-full-control'] = params['GrantFullControl'];
+//
+//     var xml = '';
+//     if (params['AccessControlPolicy']) {
+//         var AccessControlPolicy = util.clone(params['AccessControlPolicy'] || {});
+//         var Grants = AccessControlPolicy.Grants || AccessControlPolicy.Grant;
+//         Grants = util.isArray(Grants) ? Grants : [Grants];
+//         delete AccessControlPolicy.Grant;
+//         delete AccessControlPolicy.Grants;
+//         AccessControlPolicy.AccessControlList = {Grant: Grants};
+//         xml = util.json2xml({AccessControlPolicy: AccessControlPolicy});
+//         headers['Content-MD5'] = util.binaryBase64(util.md5(xml));
+//         headers['Content-Type'] = 'application/xml';
+//     }
+//
+//     submitRequest.call(this, {
+//         method: 'PUT',
+//         Bucket: params.Bucket,
+//         Region: params.Region,
+//         action: '/?acl',
+//         headers: headers,
+//         body: xml,
+//     }, function (err, data) {
+//         if (err) {
+//             return callback(err);
+//         }
+//         callback(null, {
+//             statusCode: data.statusCode,
+//             headers: data.headers,
+//         });
+//     });
+// }
+//
+// /**
+//  * 获取 Bucket 的 跨域设置
+//  * @param  {Object}  params                         参数对象，必须
+//  *     @param  {String}  params.Bucket              Bucket名称，必须
+//  *     @param  {String}  params.Region              地域名称，必须
+//  * @param  {Function}  callback                     回调函数，必须
+//  * @return  {Object}  err                           请求失败的错误，如果请求成功，则为空。
+//  * @return  {Object}  data                          返回的数据
+//  *     @return  {Object}  data.CORSRules            Bucket的跨域设置
+//  */
+// function getBucketCors(params, callback) {
+//     submitRequest.call(this, {
+//         method: 'GET',
+//         Bucket: params.Bucket,
+//         Region: params.Region,
+//         action: '/?cors',
+//     }, function (err, data) {
+//         if (err) {
+//             if (err.statusCode === 404 && err.error && err.error.Code === 'NoSuchCORSConfiguration') {
+//                 var result = {
+//                     CORSRules: [],
+//                     statusCode: err.statusCode,
+//                 };
+//                 err.headers && (result.headers = err.headers);
+//                 callback(null, result);
+//             } else {
+//                 callback(err);
+//             }
+//             return;
+//         }
+//         var CORSConfiguration = data.CORSConfiguration || {};
+//         var CORSRules = CORSConfiguration.CORSRules || CORSConfiguration.CORSRule || [];
+//         CORSRules = util.clone(util.isArray(CORSRules) ? CORSRules : [CORSRules]);
+//
+//         util.each(CORSRules, function (rule) {
+//             util.each(['AllowedOrigin', 'AllowedHeader', 'AllowedMethod', 'ExposeHeader'], function (key, j) {
+//                 var sKey = key + 's';
+//                 var val = rule[sKey] || rule[key] || [];
+//                 delete rule[key];
+//                 rule[sKey] = util.isArray(val) ? val : [val];
+//             });
+//         });
+//
+//         callback(null, {
+//             CORSRules: CORSRules,
+//             statusCode: data.statusCode,
+//             headers: data.headers,
+//         });
+//     });
+// }
+//
+// /**
+//  * 设置 Bucket 的 跨域设置
+//  * @param  {Object}  params                             参数对象，必须
+//  *     @param  {String}  params.Bucket                  Bucket名称，必须
+//  *     @param  {String}  params.Region                  地域名称，必须
+//  *     @param  {Object}  params.CORSConfiguration       相关的跨域设置，必须
+//  * @param  {Array}  params.CORSConfiguration.CORSRules  对应的跨域规则
+//  * @param  {Function}  callback                         回调函数，必须
+//  * @return  {Object}  err                               请求失败的错误，如果请求成功，则为空。
+//  * @return  {Object}  data                              返回的数据
+//  */
+// function putBucketCors(params, callback) {
+//
+//     var CORSConfiguration = params['CORSConfiguration'] || {};
+//     var CORSRules = CORSConfiguration['CORSRules'] || params['CORSRules'] || [];
+//     CORSRules = util.clone(util.isArray(CORSRules) ? CORSRules : [CORSRules]);
+//     util.each(CORSRules, function (rule) {
+//         util.each(['AllowedOrigin', 'AllowedHeader', 'AllowedMethod', 'ExposeHeader'], function (key, k) {
+//             var sKey = key + 's';
+//             var val = rule[sKey] || rule[key] || [];
+//             delete rule[sKey];
+//             rule[key] = util.isArray(val) ? val : [val];
+//         });
+//     });
+//
+//     var xml = util.json2xml({CORSConfiguration: {CORSRule: CORSRules}});
+//     var headers = {};
+//     headers['Content-MD5'] = util.binaryBase64(util.md5(xml));
+//     headers['Content-Type'] = 'application/xml';
+//
+//     submitRequest.call(this, {
+//         method: 'PUT',
+//         Bucket: params.Bucket,
+//         Region: params.Region,
+//         body: xml,
+//         action: '/?cors',
+//         headers: headers,
+//     }, function (err, data) {
+//         if (err) {
+//             return callback(err);
+//         }
+//         callback(null, {
+//             statusCode: data.statusCode,
+//             headers: data.headers,
+//         });
+//     });
+// }
+//
+// /**
+//  * 删除 Bucket 的 跨域设置
+//  * @param  {Object}  params                 参数对象，必须
+//  *     @param  {String}  params.Bucket      Bucket名称，必须
+//  *     @param  {String}  params.Region      地域名称，必须
+//  * @param  {Function}  callback             回调函数，必须
+//  * @return  {Object}  err                   请求失败的错误，如果请求成功，则为空。
+//  * @return  {Object}  data                  返回的数据
+//  */
+// function deleteBucketCors(params, callback) {
+//     submitRequest.call(this, {
+//         method: 'DELETE',
+//         Bucket: params.Bucket,
+//         Region: params.Region,
+//         action: '/?cors',
+//     }, function (err, data) {
+//         if (err && err.statusCode === 204) {
+//             return callback(null, {statusCode: err.statusCode});
+//         } else if (err) {
+//             return callback(err);
+//         }
+//         callback(null, {
+//             statusCode: data.statusCode || err.statusCode,
+//             headers: data.headers,
+//         });
+//     });
+// }
+//
+// function putBucketPolicy(params, callback) {
+//     var headers = {};
+//     var Policy = params['Policy'];
+//     var PolicyStr = Policy;
+//     try {
+//         if (typeof Policy === 'string') {
+//             Policy = JSON.parse(PolicyStr);
+//         } else {
+//             PolicyStr = JSON.stringify(Policy);
+//         }
+//     } catch (e) {
+//         callback({error: 'Policy format error'});
+//     }
+//
+//     headers['Content-Type'] = 'application/json';
+//     headers['Content-MD5'] = util.binaryBase64(util.md5(PolicyStr));
+//
+//     submitRequest.call(this, {
+//         method: 'PUT',
+//         Bucket: params.Bucket,
+//         Region: params.Region,
+//         action: '/?policy',
+//         body: util.isBrowser ? PolicyStr : Policy,
+//         headers: headers,
+//         json: true,
+//     }, function (err, data) {
+//         if (err && err.statusCode === 204) {
+//             return callback(null, {statusCode: err.statusCode});
+//         } else if (err) {
+//             return callback(err);
+//         }
+//         callback(null, {
+//             statusCode: data.statusCode,
+//             headers: data.headers,
+//         });
+//     });
+// }
+//
+// /**
+//  * 获取 Bucket 的 地域信息
+//  * @param  {Object}  params             参数对象，必须
+//  *     @param  {String}  params.Bucket  Bucket名称，必须
+//  *     @param  {String}  params.Region  地域名称，必须
+//  * @param  {Function}  callback         回调函数，必须
+//  * @return  {Object}  err               请求失败的错误，如果请求成功，则为空。
+//  * @return  {Object}  data              返回数据，包含地域信息 LocationConstraint
+//  */
+// function getBucketLocation(params, callback) {
+//     submitRequest.call(this, {
+//         method: 'GET',
+//         Bucket: params.Bucket,
+//         Region: params.Region,
+//         action: '/?location',
+//     }, function (err, data) {
+//         if (err) {
+//             return callback(err);
+//         }
+//         callback(null, data);
+//     });
+// }
+//
+// /**
+//  * 获取 Bucket 的读取权限策略
+//  * @param  {Object}  params             参数对象，必须
+//  *     @param  {String}  params.Bucket  Bucket名称，必须
+//  *     @param  {String}  params.Region  地域名称，必须
+//  * @param  {Function}  callback         回调函数，必须
+//  * @return  {Object}  err               请求失败的错误，如果请求成功，则为空。
+//  * @return  {Object}  data              返回数据
+//  */
+// function getBucketPolicy(params, callback) {
+//     submitRequest.call(this, {
+//         method: 'GET',
+//         Bucket: params.Bucket,
+//         Region: params.Region,
+//         action: '/?policy',
+//         rawBody: true,
+//     }, function (err, data) {
+//         if (err) {
+//             if (err.statusCode && err.statusCode === 403) {
+//                 return callback({ErrorStatus: 'Access Denied'});
+//             }
+//             if (err.statusCode && err.statusCode === 405) {
+//                 return callback({ErrorStatus: 'Method Not Allowed'});
+//             }
+//             if (err.statusCode && err.statusCode === 404) {
+//                 return callback({ErrorStatus: 'Policy Not Found'});
+//             }
+//             return callback(err);
+//         }
+//         var Policy = {};
+//         try {
+//             Policy = JSON.parse(data.body);
+//         } catch (e) {
+//         }
+//         callback(null, {
+//             Policy: Policy,
+//             statusCode: data.statusCode,
+//             headers: data.headers,
+//         });
+//     });
+// }
+//
+// /**
+//  * 获取 Bucket 的标签设置
+//  * @param  {Object}  params             参数对象，必须
+//  *     @param  {String}  params.Bucket  Bucket名称，必须
+//  *     @param  {String}  params.Region  地域名称，必须
+//  * @param  {Function}  callback         回调函数，必须
+//  * @return  {Object}  err               请求失败的错误，如果请求成功，则为空。
+//  * @return  {Object}  data              返回数据
+//  */
+// function getBucketTagging(params, callback) {
+//     submitRequest.call(this, {
+//         method: 'GET',
+//         Bucket: params.Bucket,
+//         Region: params.Region,
+//         action: '/?tagging',
+//     }, function (err, data) {
+//         if (err) {
+//             if (err.statusCode === 404 && err.error && (err.error === "Not Found" || err.error.Code === 'NoSuchTagSet')) {
+//                 var result = {
+//                     Tags: [],
+//                     statusCode: err.statusCode,
+//                 };
+//                 err.headers && (result.headers = err.headers);
+//                 callback(null, result);
+//             } else {
+//                 callback(err);
+//             }
+//             return;
+//         }
+//         var Tags = [];
+//         try {
+//             Tags = data.Tagging.TagSet.Tag || [];
+//         } catch (e) {
+//         }
+//         Tags = util.clone(util.isArray(Tags) ? Tags : [Tags]);
+//         callback(null, {
+//             Tags: Tags,
+//             statusCode: data.statusCode,
+//             headers: data.headers,
+//         });
+//     });
+// }
+//
+// /**
+//  * 设置 Bucket 的标签
+//  * @param  {Object}  params             参数对象，必须
+//  *     @param  {String}  params.Bucket  Bucket名称，必须
+//  *     @param  {String}  params.Region  地域名称，必须
+//  *     @param  {Array}   params.TagSet  标签设置，必须
+//  * @param  {Function}  callback         回调函数，必须
+//  * @return  {Object}  err               请求失败的错误，如果请求成功，则为空。
+//  * @return  {Object}  data              返回数据
+//  */
+// function putBucketTagging(params, callback) {
+//
+//     var Tagging = params['Tagging'] || {};
+//     var Tags = Tagging.TagSet || Tagging.Tags || params['Tags'] || [];
+//     Tags = util.clone(util.isArray(Tags) ? Tags : [Tags]);
+//     var xml = util.json2xml({Tagging: {TagSet: {Tag: Tags}}});
+//
+//     var headers = {};
+//     headers['Content-Type'] = 'application/xml';
+//     headers['Content-MD5'] = util.binaryBase64(util.md5(xml));
+//
+//     submitRequest.call(this, {
+//         method: 'PUT',
+//         Bucket: params.Bucket,
+//         Region: params.Region,
+//         body: xml,
+//         action: '/?tagging',
+//         headers: headers,
+//     }, function (err, data) {
+//         if (err && err.statusCode === 204) {
+//             return callback(null, {statusCode: err.statusCode});
+//         } else if (err) {
+//             return callback(err);
+//         }
+//         callback(null, {
+//             statusCode: data.statusCode,
+//             headers: data.headers,
+//         });
+//     });
+// }
+//
+//
+// /**
+//  * 删除 Bucket 的 标签设置
+//  * @param  {Object}  params             参数对象，必须
+//  *     @param  {String}  params.Bucket  Bucket名称，必须
+//  *     @param  {String}  params.Region  地域名称，必须
+//  * @param  {Function}  callback         回调函数，必须
+//  * @return  {Object}  err               请求失败的错误，如果请求成功，则为空。
+//  * @return  {Object}  data              返回的数据
+//  */
+// function deleteBucketTagging(params, callback) {
+//     submitRequest.call(this, {
+//         method: 'DELETE',
+//         Bucket: params.Bucket,
+//         Region: params.Region,
+//         action: '/?tagging',
+//     }, function (err, data) {
+//         if (err && err.statusCode === 204) {
+//             return callback(null, {statusCode: err.statusCode});
+//         } else if (err) {
+//             return callback(err);
+//         }
+//         callback(null, {
+//             statusCode: data.statusCode,
+//             headers: data.headers,
+//         });
+//     });
+// }
+//
+// function putBucketLifecycle(params, callback) {
+//
+//     var LifecycleConfiguration = params['LifecycleConfiguration'] || {};
+//     var Rules = LifecycleConfiguration.Rules || [];
+//     Rules = util.clone(Rules);
+//     var xml = util.json2xml({LifecycleConfiguration: {Rule: Rules}});
+//
+//     var headers = {};
+//     headers['Content-Type'] = 'application/xml';
+//     headers['Content-MD5'] = util.binaryBase64(util.md5(xml));
+//
+//     submitRequest.call(this, {
+//         method: 'PUT',
+//         Bucket: params.Bucket,
+//         Region: params.Region,
+//         body: xml,
+//         action: '/?lifecycle',
+//         headers: headers,
+//     }, function (err, data) {
+//         if (err && err.statusCode === 204) {
+//             return callback(null, {statusCode: err.statusCode});
+//         } else if (err) {
+//             return callback(err);
+//         }
+//         callback(null, {
+//             statusCode: data.statusCode,
+//             headers: data.headers,
+//         });
+//     });
+// }
+//
+// function getBucketLifecycle(params, callback) {
+//     submitRequest.call(this, {
+//         method: 'GET',
+//         Bucket: params.Bucket,
+//         Region: params.Region,
+//         action: '/?lifecycle',
+//     }, function (err, data) {
+//         if (err) {
+//             if (err.statusCode === 404 && err.error && err.error.Code === 'NoSuchLifecycleConfiguration') {
+//                 var result = {
+//                     Rules: [],
+//                     statusCode: err.statusCode,
+//                 };
+//                 err.headers && (result.headers = err.headers);
+//                 callback(null, result);
+//             } else {
+//                 callback(err);
+//             }
+//             return;
+//         }
+//         var Rules = [];
+//         try {
+//             Rules = data.LifecycleConfiguration.Rule || [];
+//         } catch (e) {
+//         }
+//         Rules = util.clone(util.isArray(Rules) ? Rules : [Rules]);
+//         callback(null, {
+//             Rules: Rules,
+//             statusCode: data.statusCode,
+//             headers: data.headers,
+//         });
+//     });
+// }
+//
+// function deleteBucketLifecycle(params, callback) {
+//     submitRequest.call(this, {
+//         method: 'DELETE',
+//         Bucket: params.Bucket,
+//         Region: params.Region,
+//         action: '/?lifecycle',
+//     }, function (err, data) {
+//         if (err && err.statusCode === 204) {
+//             return callback(null, {statusCode: err.statusCode});
+//         } else if (err) {
+//             return callback(err);
+//         }
+//         callback(null, {
+//             statusCode: data.statusCode,
+//             headers: data.headers,
+//         });
+//     });
+// }
+//
+// function putBucketVersioning(params, callback) {
+//     var VersioningConfiguration = params['VersioningConfiguration'] || {};
+//     var xml = util.json2xml({VersioningConfiguration: VersioningConfiguration});
+//
+//     var headers = {};
+//     headers['x-cos-mfa'] = params.MFA;
+//     headers['Content-Type'] = 'application/xml';
+//     headers['Content-MD5'] = util.binaryBase64(util.md5(xml));
+//
+//     submitRequest.call(this, {
+//         method: 'PUT',
+//         Bucket: params.Bucket,
+//         Region: params.Region,
+//         body: xml,
+//         action: '/?versioning',
+//         headers: headers,
+//     }, function (err, data) {
+//         if (err && err.statusCode === 204) {
+//             return callback(null, {statusCode: err.statusCode});
+//         } else if (err) {
+//             return callback(err);
+//         }
+//         callback(null, {
+//             statusCode: data.statusCode,
+//             headers: data.headers,
+//         });
+//     });
+// }
+//
+// function getBucketVersioning(params, callback) {
+//     submitRequest.call(this, {
+//         method: 'GET',
+//         Bucket: params.Bucket,
+//         Region: params.Region,
+//         action: '/?versioning',
+//     }, function (err, data) {
+//         if (!err) {
+//             !data.VersioningConfiguration && (data.VersioningConfiguration = {});
+//             !data.VersioningConfiguration.MFADelete && (data.VersioningConfiguration.MFADelete = 'Disabled');
+//             !data.VersioningConfiguration.Status && (data.VersioningConfiguration.Status = 'Disabled');
+//         }
+//         callback(err, data);
+//     });
+// }
+//
+// function putBucketReplication(params, callback) {
+//     var ReplicationConfiguration = util.clone(params.ReplicationConfiguration);
+//     ReplicationConfiguration.Rule = ReplicationConfiguration.Rules;
+//     delete ReplicationConfiguration.Rules;
+//     var xml = util.json2xml({ReplicationConfiguration: ReplicationConfiguration});
+//
+//     var headers = {};
+//     headers['Content-Type'] = 'application/xml';
+//     headers['Content-MD5'] = util.binaryBase64(util.md5(xml));
+//
+//     submitRequest.call(this, {
+//         method: 'PUT',
+//         Bucket: params.Bucket,
+//         Region: params.Region,
+//         body: xml,
+//         action: '/?replication',
+//         headers: headers,
+//     }, function (err, data) {
+//         if (err && err.statusCode === 204) {
+//             return callback(null, {statusCode: err.statusCode});
+//         } else if (err) {
+//             return callback(err);
+//         }
+//         callback(null, {
+//             statusCode: data.statusCode,
+//             headers: data.headers,
+//         });
+//     });
+// }
+//
+// function getBucketReplication(params, callback) {
+//     submitRequest.call(this, {
+//         method: 'GET',
+//         Bucket: params.Bucket,
+//         Region: params.Region,
+//         action: '/?replication',
+//     }, function (err, data) {
+//         if (err) {
+//             if (err.statusCode === 404 && err.error && (err.error === 'Not Found' || err.error.Code === 'ReplicationConfigurationnotFoundError')) {
+//                 var result = {
+//                     ReplicationConfiguration: {Rules: []},
+//                     statusCode: err.statusCode,
+//                 };
+//                 err.headers && (result.headers = err.headers);
+//                 callback(null, result);
+//             } else {
+//                 callback(err);
+//             }
+//             return;
+//         }
+//         if (!err) {
+//             !data.ReplicationConfiguration && (data.ReplicationConfiguration = {});
+//         }
+//         callback(err, data);
+//     });
+// }
+//
+// function deleteBucketReplication(params, callback) {
+//     submitRequest.call(this, {
+//         method: 'DELETE',
+//         Bucket: params.Bucket,
+//         Region: params.Region,
+//         action: '/?replication',
+//     }, function (err, data) {
+//         if (err && err.statusCode === 204) {
+//             return callback(null, {statusCode: err.statusCode});
+//         } else if (err) {
+//             return callback(err);
+//         }
+//         callback(null, {
+//             statusCode: data.statusCode,
+//             headers: data.headers,
+//         });
+//     });
+// }
+//
+// // Object 相关
+//
+// /**
+//  * 取回对应Object的元数据，Head的权限与Get的权限一致
+//  * @param  {Object}  params                         参数对象，必须
+//  *     @param  {String}  params.Bucket              Bucket名称，必须
+//  *     @param  {String}  params.Region              地域名称，必须
+//  *     @param  {String}  params.Key                 文件名称，必须
+//  *     @param  {String}  params.IfModifiedSince     当Object在指定时间后被修改，则返回对应Object元信息，否则返回304，非必须
+//  * @param  {Function}  callback                     回调函数，必须
+//  * @return  {Object}  err                           请求失败的错误，如果请求成功，则为空。
+//  * @return  {Object}  data                          为指定 object 的元数据，如果设置了 IfModifiedSince ，且文件未修改，则返回一个对象，NotModified 属性为 true
+//  *     @return  {Boolean}  data.NotModified         是否在 IfModifiedSince 时间点之后未修改该 object，则为 true
+//  */
+// function headObject(params, callback) {
+//     var headers = {};
+//     headers['If-Modified-Since'] = params['IfModifiedSince'];
+//
+//     submitRequest.call(this, {
+//         method: 'HEAD',
+//         Bucket: params.Bucket,
+//         Region: params.Region,
+//         Key: params.Key,
+//         headers: headers,
+//     }, function (err, data) {
+//         if (err) {
+//             var statusCode = err.statusCode;
+//             if (headers['If-Modified-Since'] && statusCode && statusCode === 304) {
+//                 return callback(null, {
+//                     NotModified: true,
+//                     statusCode: statusCode,
+//                 });
+//             }
+//             return callback(err);
+//         }
+//         callback(null, data);
+//     });
+// }
 
 /**
  * 下载 object
@@ -1131,176 +1131,176 @@ function putObject(params, callback) {
     });
 }
 
-/**
- * 删除 object
- * @param  {Object}  params                     参数对象，必须
- *     @param  {String}  params.Bucket          Bucket名称，必须
- *     @param  {String}  params.Region          地域名称，必须
- *     @param  {String}  params.Key             object名称，必须
- * @param  {Function}  callback                 回调函数，必须
- * @param  {Object}  err                        请求失败的错误，如果请求成功，则为空。
- * @param  {Object}  data                       删除操作成功之后返回的数据
- */
-function deleteObject(params, callback) {
-    submitRequest.call(this, {
-        method: 'DELETE',
-        Bucket: params.Bucket,
-        Region: params.Region,
-        Key: params.Key,
-    }, function (err, data) {
-        if (err) {
-            var statusCode = err.statusCode;
-            if (statusCode && statusCode === 204) {
-                return callback(null, {statusCode: statusCode});
-            } else if (statusCode && statusCode === 404) {
-                return callback(null, {BucketNotFound: true, statusCode: statusCode,});
-            } else {
-                return callback(err);
-            }
-        }
-        callback(null, {
-            statusCode: data.statusCode,
-            headers: data.headers,
-        });
-    });
-}
-
-/**
- * 获取 object 的 权限列表
- * @param  {Object}  params                         参数对象，必须
- *     @param  {String}  params.Bucket              Bucket名称，必须
- *     @param  {String}  params.Region              地域名称，必须
- *     @param  {String}  params.Key                 object名称，必须
- * @param  {Function}  callback                     回调函数，必须
- * @return  {Object}  err                           请求失败的错误，如果请求成功，则为空。
- * @return  {Object}  data                          返回的数据
- *     @return  {Object}  data.AccessControlPolicy  权限列表
- */
-function getObjectAcl(params, callback) {
-
-    submitRequest.call(this, {
-        method: 'GET',
-        Bucket: params.Bucket,
-        Region: params.Region,
-        Key: params.Key,
-        action: '?acl',
-    }, function (err, data) {
-        if (err) {
-            return callback(err);
-        }
-        var Owner = data.AccessControlPolicy.Owner || {};
-        var Grant = data.AccessControlPolicy.AccessControlList.Grant || [];
-        Grant = util.isArray(Grant) ? Grant : [Grant];
-        var result = decodeAcl(data.AccessControlPolicy);
-        if (data.headers && data.headers['x-cos-acl']) {
-            result.ACL = data.headers['x-cos-acl'];
-        }
-        result = util.extend(result, {
-            Owner: Owner,
-            Grants: Grant,
-            statusCode: data.statusCode,
-            headers: data.headers,
-        });
-        callback(null, result);
-    });
-}
-
-/**
- * 设置 object 的 权限列表
- * @param  {Object}  params             参数对象，必须
- *     @param  {String}  params.Bucket  Bucket名称，必须
- *     @param  {String}  params.Region  地域名称，必须
- *     @param  {String}  params.Key     object名称，必须
- * @param  {Function}  callback         回调函数，必须
- * @return  {Object}  err               请求失败的错误，如果请求成功，则为空。
- * @return  {Object}  data              返回的数据
- */
-function putObjectAcl(params, callback) {
-    var headers = {};
-
-    headers['x-cos-acl'] = params['ACL'];
-    headers['x-cos-grant-read'] = params['GrantRead'];
-    headers['x-cos-grant-write'] = params['GrantWrite'];
-    headers['x-cos-grant-full-control'] = params['GrantFullControl'];
-
-    var xml = '';
-    if (params['AccessControlPolicy']) {
-        var AccessControlPolicy = util.clone(params['AccessControlPolicy'] || {});
-        var Grants = AccessControlPolicy.Grants || AccessControlPolicy.Grant;
-        Grants = util.isArray(Grants) ? Grants : [Grants];
-        delete AccessControlPolicy.Grant;
-        delete AccessControlPolicy.Grants;
-        AccessControlPolicy.AccessControlList = {Grant: Grants};
-        xml = util.json2xml({AccessControlPolicy: AccessControlPolicy});
-        headers['Content-MD5'] = util.binaryBase64(util.md5(xml));
-        headers['Content-Type'] = 'application/xml';
-    }
-
-    submitRequest.call(this, {
-        method: 'PUT',
-        Bucket: params.Bucket,
-        Region: params.Region,
-        Key: params.Key,
-        action: '?acl',
-        headers: headers,
-        body: xml,
-    }, function (err, data) {
-        if (err) {
-            return callback(err);
-        }
-        callback(null, {
-            statusCode: data.statusCode,
-            headers: data.headers,
-        });
-    });
-}
-
-/**
- * Options Object请求实现跨域访问的预请求。即发出一个 OPTIONS 请求给服务器以确认是否可以进行跨域操作。
- * @param  {Object}  params             参数对象，必须
- *     @param  {String}  params.Bucket  Bucket名称，必须
- *     @param  {String}  params.Region  地域名称，必须
- *     @param  {String}  params.Key     object名称，必须
- * @param  {Function}  callback         回调函数，必须
- * @return  {Object}  err               请求失败的错误，如果请求成功，则为空。
- * @return  {Object}  data              返回的数据
- */
-function optionsObject(params, callback) {
-    var headers = {};
-
-    headers['Origin'] = params['Origin'];
-    headers['Access-Control-Request-Method'] = params['AccessControlRequestMethod'];
-    headers['Access-Control-Request-Headers'] = params['AccessControlRequestHeaders'];
-
-    submitRequest.call(this, {
-        method: 'OPTIONS',
-        Bucket: params.Bucket,
-        Region: params.Region,
-        Key: params.Key,
-        headers: headers,
-    }, function (err, data) {
-        if (err) {
-            if (err.statusCode && err.statusCode == 403) {
-                return callback(null, {
-                    OptionsForbidden: true,
-                    statusCode: err.statusCode
-                });
-            }
-            return callback(err);
-        }
-
-        var headers = data.headers || {};
-        callback(null, {
-            AccessControlAllowOrigin: headers['access-control-allow-origin'],
-            AccessControlAllowMethods: headers['access-control-allow-methods'],
-            AccessControlAllowHeaders: headers['access-control-allow-headers'],
-            AccessControlExposeHeaders: headers['access-control-expose-headers'],
-            AccessControlMaxAge: headers['access-control-max-age'],
-            statusCode: data.statusCode,
-            headers: data.headers,
-        });
-    });
-}
+// /**
+//  * 删除 object
+//  * @param  {Object}  params                     参数对象，必须
+//  *     @param  {String}  params.Bucket          Bucket名称，必须
+//  *     @param  {String}  params.Region          地域名称，必须
+//  *     @param  {String}  params.Key             object名称，必须
+//  * @param  {Function}  callback                 回调函数，必须
+//  * @param  {Object}  err                        请求失败的错误，如果请求成功，则为空。
+//  * @param  {Object}  data                       删除操作成功之后返回的数据
+//  */
+// function deleteObject(params, callback) {
+//     submitRequest.call(this, {
+//         method: 'DELETE',
+//         Bucket: params.Bucket,
+//         Region: params.Region,
+//         Key: params.Key,
+//     }, function (err, data) {
+//         if (err) {
+//             var statusCode = err.statusCode;
+//             if (statusCode && statusCode === 204) {
+//                 return callback(null, {statusCode: statusCode});
+//             } else if (statusCode && statusCode === 404) {
+//                 return callback(null, {BucketNotFound: true, statusCode: statusCode,});
+//             } else {
+//                 return callback(err);
+//             }
+//         }
+//         callback(null, {
+//             statusCode: data.statusCode,
+//             headers: data.headers,
+//         });
+//     });
+// }
+//
+// /**
+//  * 获取 object 的 权限列表
+//  * @param  {Object}  params                         参数对象，必须
+//  *     @param  {String}  params.Bucket              Bucket名称，必须
+//  *     @param  {String}  params.Region              地域名称，必须
+//  *     @param  {String}  params.Key                 object名称，必须
+//  * @param  {Function}  callback                     回调函数，必须
+//  * @return  {Object}  err                           请求失败的错误，如果请求成功，则为空。
+//  * @return  {Object}  data                          返回的数据
+//  *     @return  {Object}  data.AccessControlPolicy  权限列表
+//  */
+// function getObjectAcl(params, callback) {
+//
+//     submitRequest.call(this, {
+//         method: 'GET',
+//         Bucket: params.Bucket,
+//         Region: params.Region,
+//         Key: params.Key,
+//         action: '?acl',
+//     }, function (err, data) {
+//         if (err) {
+//             return callback(err);
+//         }
+//         var Owner = data.AccessControlPolicy.Owner || {};
+//         var Grant = data.AccessControlPolicy.AccessControlList.Grant || [];
+//         Grant = util.isArray(Grant) ? Grant : [Grant];
+//         var result = decodeAcl(data.AccessControlPolicy);
+//         if (data.headers && data.headers['x-cos-acl']) {
+//             result.ACL = data.headers['x-cos-acl'];
+//         }
+//         result = util.extend(result, {
+//             Owner: Owner,
+//             Grants: Grant,
+//             statusCode: data.statusCode,
+//             headers: data.headers,
+//         });
+//         callback(null, result);
+//     });
+// }
+//
+// /**
+//  * 设置 object 的 权限列表
+//  * @param  {Object}  params             参数对象，必须
+//  *     @param  {String}  params.Bucket  Bucket名称，必须
+//  *     @param  {String}  params.Region  地域名称，必须
+//  *     @param  {String}  params.Key     object名称，必须
+//  * @param  {Function}  callback         回调函数，必须
+//  * @return  {Object}  err               请求失败的错误，如果请求成功，则为空。
+//  * @return  {Object}  data              返回的数据
+//  */
+// function putObjectAcl(params, callback) {
+//     var headers = {};
+//
+//     headers['x-cos-acl'] = params['ACL'];
+//     headers['x-cos-grant-read'] = params['GrantRead'];
+//     headers['x-cos-grant-write'] = params['GrantWrite'];
+//     headers['x-cos-grant-full-control'] = params['GrantFullControl'];
+//
+//     var xml = '';
+//     if (params['AccessControlPolicy']) {
+//         var AccessControlPolicy = util.clone(params['AccessControlPolicy'] || {});
+//         var Grants = AccessControlPolicy.Grants || AccessControlPolicy.Grant;
+//         Grants = util.isArray(Grants) ? Grants : [Grants];
+//         delete AccessControlPolicy.Grant;
+//         delete AccessControlPolicy.Grants;
+//         AccessControlPolicy.AccessControlList = {Grant: Grants};
+//         xml = util.json2xml({AccessControlPolicy: AccessControlPolicy});
+//         headers['Content-MD5'] = util.binaryBase64(util.md5(xml));
+//         headers['Content-Type'] = 'application/xml';
+//     }
+//
+//     submitRequest.call(this, {
+//         method: 'PUT',
+//         Bucket: params.Bucket,
+//         Region: params.Region,
+//         Key: params.Key,
+//         action: '?acl',
+//         headers: headers,
+//         body: xml,
+//     }, function (err, data) {
+//         if (err) {
+//             return callback(err);
+//         }
+//         callback(null, {
+//             statusCode: data.statusCode,
+//             headers: data.headers,
+//         });
+//     });
+// }
+//
+// /**
+//  * Options Object请求实现跨域访问的预请求。即发出一个 OPTIONS 请求给服务器以确认是否可以进行跨域操作。
+//  * @param  {Object}  params             参数对象，必须
+//  *     @param  {String}  params.Bucket  Bucket名称，必须
+//  *     @param  {String}  params.Region  地域名称，必须
+//  *     @param  {String}  params.Key     object名称，必须
+//  * @param  {Function}  callback         回调函数，必须
+//  * @return  {Object}  err               请求失败的错误，如果请求成功，则为空。
+//  * @return  {Object}  data              返回的数据
+//  */
+// function optionsObject(params, callback) {
+//     var headers = {};
+//
+//     headers['Origin'] = params['Origin'];
+//     headers['Access-Control-Request-Method'] = params['AccessControlRequestMethod'];
+//     headers['Access-Control-Request-Headers'] = params['AccessControlRequestHeaders'];
+//
+//     submitRequest.call(this, {
+//         method: 'OPTIONS',
+//         Bucket: params.Bucket,
+//         Region: params.Region,
+//         Key: params.Key,
+//         headers: headers,
+//     }, function (err, data) {
+//         if (err) {
+//             if (err.statusCode && err.statusCode == 403) {
+//                 return callback(null, {
+//                     OptionsForbidden: true,
+//                     statusCode: err.statusCode
+//                 });
+//             }
+//             return callback(err);
+//         }
+//
+//         var headers = data.headers || {};
+//         callback(null, {
+//             AccessControlAllowOrigin: headers['access-control-allow-origin'],
+//             AccessControlAllowMethods: headers['access-control-allow-methods'],
+//             AccessControlAllowHeaders: headers['access-control-allow-headers'],
+//             AccessControlExposeHeaders: headers['access-control-expose-headers'],
+//             AccessControlMaxAge: headers['access-control-max-age'],
+//             statusCode: data.statusCode,
+//             headers: data.headers,
+//         });
+//     });
+// }
 
 /**
  * @param  {Object}                                     参数列表
@@ -1375,478 +1375,478 @@ function putObjectCopy(params, callback) {
     });
 }
 
-function uploadPartCopy(params, callback) {
-    var headers = {};
-
-    headers['x-cos-copy-source'] = params['CopySource'];
-    headers['x-cos-copy-source-Range'] = params['CopySourceRange'];
-    headers['x-cos-copy-source-If-Modified-Since'] = params['CopySourceIfModifiedSince'];
-    headers['x-cos-copy-source-If-Unmodified-Since'] = params['CopySourceIfUnmodifiedSince'];
-    headers['x-cos-copy-source-If-Match'] = params['CopySourceIfMatch'];
-    headers['x-cos-copy-source-If-None-Match'] = params['CopySourceIfNoneMatch'];
-
-    var action = '?partNumber=' + params['PartNumber'] + '&uploadId=' + params['UploadId'];
-
-    submitRequest.call(this, {
-        method: 'PUT',
-        Bucket: params.Bucket,
-        Region: params.Region,
-        Key: params.Key,
-        action: action,
-        headers: headers,
-    }, function (err, data) {
-        if (err) {
-            return callback(err);
-        }
-        var result = util.clone(data.CopyObjectResult);
-        util.extend(result, {
-            statusCode: data.statusCode,
-            headers: data.headers,
-        });
-        callback(null, result);
-    });
-}
-
-function deleteMultipleObject(params, callback) {
-    var headers = {};
-
-    headers['Content-Type'] = 'application/xml';
-
-    var Objects = params.Objects || {};
-    var Quiet = params.Quiet;
-
-    var DeleteConfiguration = {
-        Delete: {
-            Object: Objects,
-            Quiet: Quiet || false
-        }
-    };
-
-    var xml = util.json2xml(DeleteConfiguration);
-
-    headers['Content-MD5'] = util.binaryBase64(util.md5(xml));
-    headers['Content-Length'] = Buffer.byteLength(xml, 'utf8');
-
-    submitRequest.call(this, {
-        method: 'POST',
-        Bucket: params.Bucket,
-        Region: params.Region,
-        body: xml,
-        action: '/?delete',
-        headers: headers,
-    }, function (err, data) {
-        if (err) {
-            return callback(err);
-        }
-        var Deleted = data.DeleteResult.Deleted || [];
-        var Errors = data.DeleteResult.Error || [];
-
-        Deleted = util.isArray(Deleted) ? Deleted : [Deleted];
-        Errors = util.isArray(Errors) ? Errors : [Errors];
-
-        var result = util.clone(data.DeleteResult);
-        util.extend(result, {
-            Error: Errors,
-            Deleted: Deleted,
-            statusCode: data.statusCode,
-            headers: data.headers,
-        });
-        callback(null, result);
-    });
-}
-
-
-// 分块上传
-
-
-/**
- * 初始化分块上传
- * @param  {Object}  params                                     参数对象，必须
- *     @param  {String}  params.Bucket                          Bucket名称，必须
- *     @param  {String}  params.Region                          地域名称，必须
- *     @param  {String}  params.Key                             object名称，必须
- *     @param  {String}  params.UploadId                        object名称，必须
- *     @param  {String}  params.CacheControl                    RFC 2616 中定义的缓存策略，将作为 Object 元数据保存，非必须
- *     @param  {String}  params.ContentDisposition              RFC 2616 中定义的文件名称，将作为 Object 元数据保存    ，非必须
- *     @param  {String}  params.ContentEncoding                 RFC 2616 中定义的编码格式，将作为 Object 元数据保存，非必须
- *     @param  {String}  params.ContentType                     RFC 2616 中定义的内容类型（MIME），将作为 Object 元数据保存，非必须
- *     @param  {String}  params.Expires                         RFC 2616 中定义的过期时间，将作为 Object 元数据保存，非必须
- *     @param  {String}  params.ACL                             允许用户自定义文件权限，非必须
- *     @param  {String}  params.GrantRead                       赋予被授权者读的权限 ，非必须
- *     @param  {String}  params.GrantWrite                      赋予被授权者写的权限 ，非必须
- *     @param  {String}  params.GrantFullControl                赋予被授权者读写权限 ，非必须
- *     @param  {String}  params.StorageClass                    设置Object的存储级别，枚举值：Standard，Standard_IA，Nearline，非必须
- * @param  {Function}  callback                                 回调函数，必须
- * @return  {Object}  err                                       请求失败的错误，如果请求成功，则为空。
- * @return  {Object}  data                                      返回的数据
- */
-function multipartInit(params, callback) {
-    var headers = {};
-
-    headers['Cache-Control'] = params['CacheControl'];
-    headers['Content-Disposition'] = params['ContentDisposition'];
-    headers['Content-Encoding'] = params['ContentEncoding'];
-    headers['Content-Type'] = params['ContentType'];
-    headers['Expires'] = params['Expires'];
-
-    headers['x-cos-acl'] = params['ACL'];
-    headers['x-cos-grant-read'] = params['GrantRead'];
-    headers['x-cos-grant-write'] = params['GrantWrite'];
-    headers['x-cos-grant-full-control'] = params['GrantFullControl'];
-    headers['x-cos-storage-class'] = params['StorageClass'];
-
-    for (var key in params) {
-        if (key.indexOf('x-cos-meta-') > -1) {
-            headers[key] = params[key];
-        }
-    }
-
-    submitRequest.call(this, {
-        method: 'POST',
-        Bucket: params.Bucket,
-        Region: params.Region,
-        Key: params.Key,
-        action: '?uploads',
-        headers: headers,
-    }, function (err, data) {
-        if (err) {
-            return callback(err);
-        }
-        data = util.clone(data || {});
-        if (data && data.InitiateMultipartUploadResult) {
-            return callback(null, util.extend(data.InitiateMultipartUploadResult, {
-                statusCode: data.statusCode,
-                headers: data.headers,
-            }));
-        }
-        callback(null, data);
-    });
-}
-
-/**
- * 分块上传
- * @param  {Object}  params                     参数对象，必须
- *     @param  {String}  params.Bucket          Bucket名称，必须
- *     @param  {String}  params.Region          地域名称，必须
- *     @param  {String}  params.Key             object名称，必须
- * @param  {String}      params.ContentLength   RFC 2616 中定义的 HTTP 请求内容长度（字节），非必须
- * @param  {String}      params.Expect          当使用 Expect: 100-continue 时，在收到服务端确认后，才会发送请求内容，非必须
- * @param  {String}      params.ContentSha1     RFC 3174 中定义的 160-bit 内容 SHA-1 算法校验值，非必须
- * @param  {Function}  callback                 回调函数，必须
- * @return  {Object}  err                       请求失败的错误，如果请求成功，则为空。
- * @return  {Object}  data                      返回的数据
- *     @return  {Object}  data.ETag             返回的文件分块 sha1 值
- */
-function multipartUpload(params, callback) {
-    var headers = {};
-
-    headers['Content-Length'] = params['ContentLength'];
-    headers['Expect'] = params['Expect'];
-
-    var PartNumber = params['PartNumber'];
-    var UploadId = params['UploadId'];
-
-    var action = '?partNumber=' + PartNumber + '&uploadId=' + UploadId;
-
-    submitRequest.call(this, {
-        TaskId: params.TaskId,
-        method: 'PUT',
-        Bucket: params.Bucket,
-        Region: params.Region,
-        Key: params.Key,
-        action: action,
-        headers: headers,
-        onProgress: params.onProgress,
-        inputStream: params.Body || null
-    }, function (err, data) {
-        if (err) {
-            return callback(err);
-        }
-        data['headers'] = data['headers'] || {};
-        callback(null, {
-            ETag: data['headers']['etag'] || '',
-            statusCode: data.statusCode,
-            headers: data.headers,
-        });
-    });
-
-}
-
-/**
- * 完成分块上传
- * @param  {Object}  params                             参数对象，必须
- *     @param  {String}  params.Bucket                  Bucket名称，必须
- *     @param  {String}  params.Region                  地域名称，必须
- *     @param  {String}  params.Key                     object名称，必须
- *     @param  {Array}   params.Parts                   分块信息列表，必须
- *     @param  {String}  params.Parts[i].PartNumber     块编号，必须
- *     @param  {String}  params.Parts[i].ETag           分块的 sha1 校验值
- * @param  {Function}  callback                         回调函数，必须
- * @return  {Object}  err                               请求失败的错误，如果请求成功，则为空。
- * @return  {Object}  data                              返回的数据
- *     @return  {Object}  data.CompleteMultipartUpload  完成分块上传后的文件信息，包括Location, Bucket, Key 和 ETag
- */
-function multipartComplete(params, callback) {
-    var self = this;
-    var headers = {};
-
-    headers['Content-Type'] = 'application/xml';
-
-    var UploadId = params.UploadId;
-
-    var action = '?uploadId=' + UploadId;
-
-    var Parts = params['Parts'];
-
-    for (var i = 0, len = Parts.length; i < len; i++) {
-        if (Parts[i]['ETag'].indexOf('"') == 0) {
-            continue;
-        }
-        Parts[i]['ETag'] = '"' + Parts[i]['ETag'] + '"';
-    }
-
-    var PartData = {
-        'CompleteMultipartUpload': {
-            'Part': Parts
-        }
-    };
-
-    var xml = util.json2xml(PartData);
-
-    headers['Content-length'] = Buffer.byteLength(xml, 'utf8');
-    headers['Content-MD5'] = util.binaryBase64(util.md5(xml));
-
-    submitRequest.call(this, {
-        method: 'POST',
-        Bucket: params.Bucket,
-        Region: params.Region,
-        Key: params.Key,
-        action: action,
-        body: xml,
-        headers: headers,
-    }, function (err, data) {
-        if (err) {
-            return callback(err);
-        }
-        var url = getUrl({
-            domain: self.options.Domain,
-            bucket: params.Bucket,
-            region: params.Region,
-            object: params.Key,
-            isLocation: true,
-        });
-        var result = util.extend(data.CompleteMultipartUploadResult, {
-            Location: url,
-            statusCode: data.statusCode,
-            headers: data.headers,
-        });
-        callback(null, result);
-    });
-}
-
-/**
- * 分块上传任务列表查询
- * @param  {Object}  params                                 参数对象，必须
- *     @param  {String}  params.Bucket                      Bucket名称，必须
- *     @param  {String}  params.Region                      地域名称，必须
- *     @param  {String}  params.Delimiter                   定界符为一个符号，如果有Prefix，则将Prefix到delimiter之间的相同路径归为一类，定义为Common Prefix，然后列出所有Common Prefix。如果没有Prefix，则从路径起点开始，非必须
- *     @param  {String}  params.EncodingType                规定返回值的编码方式，非必须
- *     @param  {String}  params.Prefix                      前缀匹配，用来规定返回的文件前缀地址，非必须
- *     @param  {String}  params.MaxUploads                  单次返回最大的条目数量，默认1000，非必须
- *     @param  {String}  params.KeyMarker                   与upload-id-marker一起使用 </Br>当upload-id-marker未被指定时，ObjectName字母顺序大于key-marker的条目将被列出 </Br>当upload-id-marker被指定时，ObjectName字母顺序大于key-marker的条目被列出，ObjectName字母顺序等于key-marker同时UploadId大于upload-id-marker的条目将被列出，非必须
- *     @param  {String}  params.UploadIdMarker              与key-marker一起使用 </Br>当key-marker未被指定时，upload-id-marker将被忽略 </Br>当key-marker被指定时，ObjectName字母顺序大于key-marker的条目被列出，ObjectName字母顺序等于key-marker同时UploadId大于upload-id-marker的条目将被列出，非必须
- * @param  {Function}  callback                             回调函数，必须
- * @return  {Object}  err                                   请求失败的错误，如果请求成功，则为空。
- * @return  {Object}  data                                  返回的数据
- *     @return  {Object}  data.ListMultipartUploadsResult   分块上传任务信息
- */
-function multipartList(params, callback) {
-    var reqParams = {};
-
-    reqParams['delimiter'] = params['Delimiter'];
-    reqParams['encoding-type'] = params['EncodingType'];
-    reqParams['prefix'] = params['Prefix'];
-
-    reqParams['max-uploads'] = params['MaxUploads'];
-
-    reqParams['key-marker'] = params['KeyMarker'];
-    reqParams['upload-id-marker'] = params['UploadIdMarker'];
-
-    reqParams = util.clearKey(reqParams);
-
-    submitRequest.call(this, {
-        method: 'GET',
-        Bucket: params.Bucket,
-        Region: params.Region,
-        action: '/?uploads&' + queryString.stringify(reqParams),
-    }, function (err, data) {
-        if (err) {
-            return callback(err);
-        }
-
-        if (data && data.ListMultipartUploadsResult) {
-            var Upload = data.ListMultipartUploadsResult.Upload || [];
-
-            var CommonPrefixes = data.ListMultipartUploadsResult.CommonPrefixes || [];
-
-            CommonPrefixes = util.isArray(CommonPrefixes) ? CommonPrefixes : [CommonPrefixes];
-            Upload = util.isArray(Upload) ? Upload : [Upload];
-
-            data.ListMultipartUploadsResult.Upload = Upload;
-            data.ListMultipartUploadsResult.CommonPrefixes = CommonPrefixes;
-        }
-        var result = util.clone(data.ListMultipartUploadsResult);
-        util.extend(result, {
-            statusCode: data.statusCode,
-            headers: data.headers,
-        });
-        callback(null, result);
-    });
-}
-
-/**
- * 上传的分块列表查询
- * @param  {Object}  params                                 参数对象，必须
- *     @param  {String}  params.Bucket                      Bucket名称，必须
- *     @param  {String}  params.Region                      地域名称，必须
- *     @param  {String}  params.Key                         object名称，必须
- *     @param  {String}  params.UploadId                    标示本次分块上传的ID，必须
- *     @param  {String}  params.EncodingType                规定返回值的编码方式，非必须
- *     @param  {String}  params.MaxParts                    单次返回最大的条目数量，默认1000，非必须
- *     @param  {String}  params.PartNumberMarker            默认以UTF-8二进制顺序列出条目，所有列出条目从marker开始，非必须
- * @param  {Function}  callback                             回调函数，必须
- * @return  {Object}  err                                   请求失败的错误，如果请求成功，则为空。
- * @return  {Object}  data                                  返回的数据
- *     @return  {Object}  data.ListMultipartUploadsResult   分块信息
- */
-function multipartListPart(params, callback) {
-    var reqParams = {};
-
-    reqParams['uploadId'] = params['UploadId'];
-    reqParams['encoding-type'] = params['EncodingType'];
-    reqParams['max-parts'] = params['MaxParts'];
-    reqParams['part-number-marker'] = params['PartNumberMarker'];
-
-
-    submitRequest.call(this, {
-        method: 'GET',
-        Bucket: params.Bucket,
-        Region: params.Region,
-        Key: params.Key,
-        qs: reqParams,
-    }, function (err, data) {
-        if (err) {
-            return callback(err);
-        }
-        var Part = data.ListPartsResult.Part || [];
-        Part = util.isArray(Part) ? Part : [Part];
-
-        data.ListPartsResult.Part = Part;
-        var result = util.clone(data.ListPartsResult);
-        util.extend(result, {
-            statusCode: data.statusCode,
-            headers: data.headers,
-        });
-        callback(null, result);
-    });
-}
-
-/**
- * 抛弃分块上传
- * @param  {Object}  params                 参数对象，必须
- *     @param  {String}  params.Bucket      Bucket名称，必须
- *     @param  {String}  params.Region      地域名称，必须
- *     @param  {String}  params.Key         object名称，必须
- *     @param  {String}  params.UploadId    标示本次分块上传的ID，必须
- * @param  {Function}  callback             回调函数，必须
- *     @return  {Object}    err             请求失败的错误，如果请求成功，则为空。
- *     @return  {Object}    data            返回的数据
- */
-function multipartAbort(params, callback) {
-    var reqParams = {};
-
-    reqParams['uploadId'] = params['UploadId'];
-    submitRequest.call(this, {
-        method: 'DELETE',
-        Bucket: params.Bucket,
-        Region: params.Region,
-        Key: params.Key,
-        qs: reqParams,
-    }, function (err, data) {
-        if (err) {
-            return callback(err);
-        }
-        callback(null, {
-            statusCode: data.statusCode,
-            headers: data.headers,
-        });
-    });
-}
-
-/**
- * 获取签名
- * @param  {Object}  params             参数对象，必须
- *     @param  {String}  params.Method  请求方法，必须
- *     @param  {String}  params.Key     object名称，必须
- *     @param  {String}  params.Expires 名超时时间，单位秒，可选
- * @return  {String}  data              返回签名字符串
- */
-function getAuth(params) {
-    return util.getAuth({
-        Method: params.Method,
-        Key: params.Key,
-        Expires: params.Expires,
-        SecretId: params.SecretId || this.options.SecretId || '',
-        SecretKey: params.SecretKey || this.options.SecretKey || ''
-    });
-}
-
-/**
- * 获取文件下载链接
- * @param  {Object}  params                 参数对象，必须
- *     @param  {String}  params.Bucket      Bucket名称，必须
- *     @param  {String}  params.Region      地域名称，必须
- *     @param  {String}  params.Key         object名称，必须
- *     @param  {String}  params.Method      请求的方法，可选
- *     @param  {String}  params.Expires     签名超时时间，单位秒，可选
- * @param  {Function}  callback             回调函数，必须
- *     @return  {Object}    err             请求失败的错误，如果请求成功，则为空。
- *     @return  {Object}    data            返回的数据
- */
-function getObjectUrl(params, callback) {
-    var self = this;
-    var url = getUrl({
-        domain: self.options.Domain,
-        bucket: params.Bucket,
-        region: params.Region,
-        object: params.Key,
-    });
-    if (params.Sign !== undefined && !params.Sign) {
-        callback(null, {Url: url});
-        return url;
-    }
-    var authorization = getAuthorizationAsync.call(this, {
-        Method: params.Method || 'get',
-        Key: params.Key,
-    }, function (AuthData) {
-        if (!callback) return;
-        var result = {
-            Url: url + '?sign=' + encodeURIComponent(AuthData.Authorization),
-        };
-        AuthData.XCosSecurityToken && (result.XCosSecurityToken = AuthData.XCosSecurityToken);
-        AuthData.ClientIP && (result.ClientIP = AuthData.ClientIP);
-        AuthData.ClientUA && (result.ClientUA = AuthData.ClientUA);
-        AuthData.Token && (result.Token = AuthData.Token);
-        setTimeout(function () {
-            callback(null, result);
-        });
-    });
-    if (authorization) {
-        return url + '?sign=' + encodeURIComponent(authorization);
-    } else {
-        return url;
-    }
-}
+// function uploadPartCopy(params, callback) {
+//     var headers = {};
+//
+//     headers['x-cos-copy-source'] = params['CopySource'];
+//     headers['x-cos-copy-source-Range'] = params['CopySourceRange'];
+//     headers['x-cos-copy-source-If-Modified-Since'] = params['CopySourceIfModifiedSince'];
+//     headers['x-cos-copy-source-If-Unmodified-Since'] = params['CopySourceIfUnmodifiedSince'];
+//     headers['x-cos-copy-source-If-Match'] = params['CopySourceIfMatch'];
+//     headers['x-cos-copy-source-If-None-Match'] = params['CopySourceIfNoneMatch'];
+//
+//     var action = '?partNumber=' + params['PartNumber'] + '&uploadId=' + params['UploadId'];
+//
+//     submitRequest.call(this, {
+//         method: 'PUT',
+//         Bucket: params.Bucket,
+//         Region: params.Region,
+//         Key: params.Key,
+//         action: action,
+//         headers: headers,
+//     }, function (err, data) {
+//         if (err) {
+//             return callback(err);
+//         }
+//         var result = util.clone(data.CopyObjectResult);
+//         util.extend(result, {
+//             statusCode: data.statusCode,
+//             headers: data.headers,
+//         });
+//         callback(null, result);
+//     });
+// }
+//
+// function deleteMultipleObject(params, callback) {
+//     var headers = {};
+//
+//     headers['Content-Type'] = 'application/xml';
+//
+//     var Objects = params.Objects || {};
+//     var Quiet = params.Quiet;
+//
+//     var DeleteConfiguration = {
+//         Delete: {
+//             Object: Objects,
+//             Quiet: Quiet || false
+//         }
+//     };
+//
+//     var xml = util.json2xml(DeleteConfiguration);
+//
+//     headers['Content-MD5'] = util.binaryBase64(util.md5(xml));
+//     headers['Content-Length'] = Buffer.byteLength(xml, 'utf8');
+//
+//     submitRequest.call(this, {
+//         method: 'POST',
+//         Bucket: params.Bucket,
+//         Region: params.Region,
+//         body: xml,
+//         action: '/?delete',
+//         headers: headers,
+//     }, function (err, data) {
+//         if (err) {
+//             return callback(err);
+//         }
+//         var Deleted = data.DeleteResult.Deleted || [];
+//         var Errors = data.DeleteResult.Error || [];
+//
+//         Deleted = util.isArray(Deleted) ? Deleted : [Deleted];
+//         Errors = util.isArray(Errors) ? Errors : [Errors];
+//
+//         var result = util.clone(data.DeleteResult);
+//         util.extend(result, {
+//             Error: Errors,
+//             Deleted: Deleted,
+//             statusCode: data.statusCode,
+//             headers: data.headers,
+//         });
+//         callback(null, result);
+//     });
+// }
+//
+//
+// // 分块上传
+//
+//
+// /**
+//  * 初始化分块上传
+//  * @param  {Object}  params                                     参数对象，必须
+//  *     @param  {String}  params.Bucket                          Bucket名称，必须
+//  *     @param  {String}  params.Region                          地域名称，必须
+//  *     @param  {String}  params.Key                             object名称，必须
+//  *     @param  {String}  params.UploadId                        object名称，必须
+//  *     @param  {String}  params.CacheControl                    RFC 2616 中定义的缓存策略，将作为 Object 元数据保存，非必须
+//  *     @param  {String}  params.ContentDisposition              RFC 2616 中定义的文件名称，将作为 Object 元数据保存    ，非必须
+//  *     @param  {String}  params.ContentEncoding                 RFC 2616 中定义的编码格式，将作为 Object 元数据保存，非必须
+//  *     @param  {String}  params.ContentType                     RFC 2616 中定义的内容类型（MIME），将作为 Object 元数据保存，非必须
+//  *     @param  {String}  params.Expires                         RFC 2616 中定义的过期时间，将作为 Object 元数据保存，非必须
+//  *     @param  {String}  params.ACL                             允许用户自定义文件权限，非必须
+//  *     @param  {String}  params.GrantRead                       赋予被授权者读的权限 ，非必须
+//  *     @param  {String}  params.GrantWrite                      赋予被授权者写的权限 ，非必须
+//  *     @param  {String}  params.GrantFullControl                赋予被授权者读写权限 ，非必须
+//  *     @param  {String}  params.StorageClass                    设置Object的存储级别，枚举值：Standard，Standard_IA，Nearline，非必须
+//  * @param  {Function}  callback                                 回调函数，必须
+//  * @return  {Object}  err                                       请求失败的错误，如果请求成功，则为空。
+//  * @return  {Object}  data                                      返回的数据
+//  */
+// function multipartInit(params, callback) {
+//     var headers = {};
+//
+//     headers['Cache-Control'] = params['CacheControl'];
+//     headers['Content-Disposition'] = params['ContentDisposition'];
+//     headers['Content-Encoding'] = params['ContentEncoding'];
+//     headers['Content-Type'] = params['ContentType'];
+//     headers['Expires'] = params['Expires'];
+//
+//     headers['x-cos-acl'] = params['ACL'];
+//     headers['x-cos-grant-read'] = params['GrantRead'];
+//     headers['x-cos-grant-write'] = params['GrantWrite'];
+//     headers['x-cos-grant-full-control'] = params['GrantFullControl'];
+//     headers['x-cos-storage-class'] = params['StorageClass'];
+//
+//     for (var key in params) {
+//         if (key.indexOf('x-cos-meta-') > -1) {
+//             headers[key] = params[key];
+//         }
+//     }
+//
+//     submitRequest.call(this, {
+//         method: 'POST',
+//         Bucket: params.Bucket,
+//         Region: params.Region,
+//         Key: params.Key,
+//         action: '?uploads',
+//         headers: headers,
+//     }, function (err, data) {
+//         if (err) {
+//             return callback(err);
+//         }
+//         data = util.clone(data || {});
+//         if (data && data.InitiateMultipartUploadResult) {
+//             return callback(null, util.extend(data.InitiateMultipartUploadResult, {
+//                 statusCode: data.statusCode,
+//                 headers: data.headers,
+//             }));
+//         }
+//         callback(null, data);
+//     });
+// }
+//
+// /**
+//  * 分块上传
+//  * @param  {Object}  params                     参数对象，必须
+//  *     @param  {String}  params.Bucket          Bucket名称，必须
+//  *     @param  {String}  params.Region          地域名称，必须
+//  *     @param  {String}  params.Key             object名称，必须
+//  * @param  {String}      params.ContentLength   RFC 2616 中定义的 HTTP 请求内容长度（字节），非必须
+//  * @param  {String}      params.Expect          当使用 Expect: 100-continue 时，在收到服务端确认后，才会发送请求内容，非必须
+//  * @param  {String}      params.ContentSha1     RFC 3174 中定义的 160-bit 内容 SHA-1 算法校验值，非必须
+//  * @param  {Function}  callback                 回调函数，必须
+//  * @return  {Object}  err                       请求失败的错误，如果请求成功，则为空。
+//  * @return  {Object}  data                      返回的数据
+//  *     @return  {Object}  data.ETag             返回的文件分块 sha1 值
+//  */
+// function multipartUpload(params, callback) {
+//     var headers = {};
+//
+//     headers['Content-Length'] = params['ContentLength'];
+//     headers['Expect'] = params['Expect'];
+//
+//     var PartNumber = params['PartNumber'];
+//     var UploadId = params['UploadId'];
+//
+//     var action = '?partNumber=' + PartNumber + '&uploadId=' + UploadId;
+//
+//     submitRequest.call(this, {
+//         TaskId: params.TaskId,
+//         method: 'PUT',
+//         Bucket: params.Bucket,
+//         Region: params.Region,
+//         Key: params.Key,
+//         action: action,
+//         headers: headers,
+//         onProgress: params.onProgress,
+//         inputStream: params.Body || null
+//     }, function (err, data) {
+//         if (err) {
+//             return callback(err);
+//         }
+//         data['headers'] = data['headers'] || {};
+//         callback(null, {
+//             ETag: data['headers']['etag'] || '',
+//             statusCode: data.statusCode,
+//             headers: data.headers,
+//         });
+//     });
+//
+// }
+//
+// /**
+//  * 完成分块上传
+//  * @param  {Object}  params                             参数对象，必须
+//  *     @param  {String}  params.Bucket                  Bucket名称，必须
+//  *     @param  {String}  params.Region                  地域名称，必须
+//  *     @param  {String}  params.Key                     object名称，必须
+//  *     @param  {Array}   params.Parts                   分块信息列表，必须
+//  *     @param  {String}  params.Parts[i].PartNumber     块编号，必须
+//  *     @param  {String}  params.Parts[i].ETag           分块的 sha1 校验值
+//  * @param  {Function}  callback                         回调函数，必须
+//  * @return  {Object}  err                               请求失败的错误，如果请求成功，则为空。
+//  * @return  {Object}  data                              返回的数据
+//  *     @return  {Object}  data.CompleteMultipartUpload  完成分块上传后的文件信息，包括Location, Bucket, Key 和 ETag
+//  */
+// function multipartComplete(params, callback) {
+//     var self = this;
+//     var headers = {};
+//
+//     headers['Content-Type'] = 'application/xml';
+//
+//     var UploadId = params.UploadId;
+//
+//     var action = '?uploadId=' + UploadId;
+//
+//     var Parts = params['Parts'];
+//
+//     for (var i = 0, len = Parts.length; i < len; i++) {
+//         if (Parts[i]['ETag'].indexOf('"') == 0) {
+//             continue;
+//         }
+//         Parts[i]['ETag'] = '"' + Parts[i]['ETag'] + '"';
+//     }
+//
+//     var PartData = {
+//         'CompleteMultipartUpload': {
+//             'Part': Parts
+//         }
+//     };
+//
+//     var xml = util.json2xml(PartData);
+//
+//     headers['Content-length'] = Buffer.byteLength(xml, 'utf8');
+//     headers['Content-MD5'] = util.binaryBase64(util.md5(xml));
+//
+//     submitRequest.call(this, {
+//         method: 'POST',
+//         Bucket: params.Bucket,
+//         Region: params.Region,
+//         Key: params.Key,
+//         action: action,
+//         body: xml,
+//         headers: headers,
+//     }, function (err, data) {
+//         if (err) {
+//             return callback(err);
+//         }
+//         var url = getUrl({
+//             domain: self.options.Domain,
+//             bucket: params.Bucket,
+//             region: params.Region,
+//             object: params.Key,
+//             isLocation: true,
+//         });
+//         var result = util.extend(data.CompleteMultipartUploadResult, {
+//             Location: url,
+//             statusCode: data.statusCode,
+//             headers: data.headers,
+//         });
+//         callback(null, result);
+//     });
+// }
+//
+// /**
+//  * 分块上传任务列表查询
+//  * @param  {Object}  params                                 参数对象，必须
+//  *     @param  {String}  params.Bucket                      Bucket名称，必须
+//  *     @param  {String}  params.Region                      地域名称，必须
+//  *     @param  {String}  params.Delimiter                   定界符为一个符号，如果有Prefix，则将Prefix到delimiter之间的相同路径归为一类，定义为Common Prefix，然后列出所有Common Prefix。如果没有Prefix，则从路径起点开始，非必须
+//  *     @param  {String}  params.EncodingType                规定返回值的编码方式，非必须
+//  *     @param  {String}  params.Prefix                      前缀匹配，用来规定返回的文件前缀地址，非必须
+//  *     @param  {String}  params.MaxUploads                  单次返回最大的条目数量，默认1000，非必须
+//  *     @param  {String}  params.KeyMarker                   与upload-id-marker一起使用 </Br>当upload-id-marker未被指定时，ObjectName字母顺序大于key-marker的条目将被列出 </Br>当upload-id-marker被指定时，ObjectName字母顺序大于key-marker的条目被列出，ObjectName字母顺序等于key-marker同时UploadId大于upload-id-marker的条目将被列出，非必须
+//  *     @param  {String}  params.UploadIdMarker              与key-marker一起使用 </Br>当key-marker未被指定时，upload-id-marker将被忽略 </Br>当key-marker被指定时，ObjectName字母顺序大于key-marker的条目被列出，ObjectName字母顺序等于key-marker同时UploadId大于upload-id-marker的条目将被列出，非必须
+//  * @param  {Function}  callback                             回调函数，必须
+//  * @return  {Object}  err                                   请求失败的错误，如果请求成功，则为空。
+//  * @return  {Object}  data                                  返回的数据
+//  *     @return  {Object}  data.ListMultipartUploadsResult   分块上传任务信息
+//  */
+// function multipartList(params, callback) {
+//     var reqParams = {};
+//
+//     reqParams['delimiter'] = params['Delimiter'];
+//     reqParams['encoding-type'] = params['EncodingType'];
+//     reqParams['prefix'] = params['Prefix'];
+//
+//     reqParams['max-uploads'] = params['MaxUploads'];
+//
+//     reqParams['key-marker'] = params['KeyMarker'];
+//     reqParams['upload-id-marker'] = params['UploadIdMarker'];
+//
+//     reqParams = util.clearKey(reqParams);
+//
+//     submitRequest.call(this, {
+//         method: 'GET',
+//         Bucket: params.Bucket,
+//         Region: params.Region,
+//         action: '/?uploads&' + new URLSearchParams(reqParams).toString(),
+//     }, function (err, data) {
+//         if (err) {
+//             return callback(err);
+//         }
+//
+//         if (data && data.ListMultipartUploadsResult) {
+//             var Upload = data.ListMultipartUploadsResult.Upload || [];
+//
+//             var CommonPrefixes = data.ListMultipartUploadsResult.CommonPrefixes || [];
+//
+//             CommonPrefixes = util.isArray(CommonPrefixes) ? CommonPrefixes : [CommonPrefixes];
+//             Upload = util.isArray(Upload) ? Upload : [Upload];
+//
+//             data.ListMultipartUploadsResult.Upload = Upload;
+//             data.ListMultipartUploadsResult.CommonPrefixes = CommonPrefixes;
+//         }
+//         var result = util.clone(data.ListMultipartUploadsResult);
+//         util.extend(result, {
+//             statusCode: data.statusCode,
+//             headers: data.headers,
+//         });
+//         callback(null, result);
+//     });
+// }
+//
+// /**
+//  * 上传的分块列表查询
+//  * @param  {Object}  params                                 参数对象，必须
+//  *     @param  {String}  params.Bucket                      Bucket名称，必须
+//  *     @param  {String}  params.Region                      地域名称，必须
+//  *     @param  {String}  params.Key                         object名称，必须
+//  *     @param  {String}  params.UploadId                    标示本次分块上传的ID，必须
+//  *     @param  {String}  params.EncodingType                规定返回值的编码方式，非必须
+//  *     @param  {String}  params.MaxParts                    单次返回最大的条目数量，默认1000，非必须
+//  *     @param  {String}  params.PartNumberMarker            默认以UTF-8二进制顺序列出条目，所有列出条目从marker开始，非必须
+//  * @param  {Function}  callback                             回调函数，必须
+//  * @return  {Object}  err                                   请求失败的错误，如果请求成功，则为空。
+//  * @return  {Object}  data                                  返回的数据
+//  *     @return  {Object}  data.ListMultipartUploadsResult   分块信息
+//  */
+// function multipartListPart(params, callback) {
+//     var reqParams = {};
+//
+//     reqParams['uploadId'] = params['UploadId'];
+//     reqParams['encoding-type'] = params['EncodingType'];
+//     reqParams['max-parts'] = params['MaxParts'];
+//     reqParams['part-number-marker'] = params['PartNumberMarker'];
+//
+//
+//     submitRequest.call(this, {
+//         method: 'GET',
+//         Bucket: params.Bucket,
+//         Region: params.Region,
+//         Key: params.Key,
+//         qs: reqParams,
+//     }, function (err, data) {
+//         if (err) {
+//             return callback(err);
+//         }
+//         var Part = data.ListPartsResult.Part || [];
+//         Part = util.isArray(Part) ? Part : [Part];
+//
+//         data.ListPartsResult.Part = Part;
+//         var result = util.clone(data.ListPartsResult);
+//         util.extend(result, {
+//             statusCode: data.statusCode,
+//             headers: data.headers,
+//         });
+//         callback(null, result);
+//     });
+// }
+//
+// /**
+//  * 抛弃分块上传
+//  * @param  {Object}  params                 参数对象，必须
+//  *     @param  {String}  params.Bucket      Bucket名称，必须
+//  *     @param  {String}  params.Region      地域名称，必须
+//  *     @param  {String}  params.Key         object名称，必须
+//  *     @param  {String}  params.UploadId    标示本次分块上传的ID，必须
+//  * @param  {Function}  callback             回调函数，必须
+//  *     @return  {Object}    err             请求失败的错误，如果请求成功，则为空。
+//  *     @return  {Object}    data            返回的数据
+//  */
+// function multipartAbort(params, callback) {
+//     var reqParams = {};
+//
+//     reqParams['uploadId'] = params['UploadId'];
+//     submitRequest.call(this, {
+//         method: 'DELETE',
+//         Bucket: params.Bucket,
+//         Region: params.Region,
+//         Key: params.Key,
+//         qs: reqParams,
+//     }, function (err, data) {
+//         if (err) {
+//             return callback(err);
+//         }
+//         callback(null, {
+//             statusCode: data.statusCode,
+//             headers: data.headers,
+//         });
+//     });
+// }
+//
+// /**
+//  * 获取签名
+//  * @param  {Object}  params             参数对象，必须
+//  *     @param  {String}  params.Method  请求方法，必须
+//  *     @param  {String}  params.Key     object名称，必须
+//  *     @param  {String}  params.Expires 名超时时间，单位秒，可选
+//  * @return  {String}  data              返回签名字符串
+//  */
+// function getAuth(params) {
+//     return util.getAuth({
+//         Method: params.Method,
+//         Key: params.Key,
+//         Expires: params.Expires,
+//         SecretId: params.SecretId || this.options.SecretId || '',
+//         SecretKey: params.SecretKey || this.options.SecretKey || ''
+//     });
+// }
+//
+// /**
+//  * 获取文件下载链接
+//  * @param  {Object}  params                 参数对象，必须
+//  *     @param  {String}  params.Bucket      Bucket名称，必须
+//  *     @param  {String}  params.Region      地域名称，必须
+//  *     @param  {String}  params.Key         object名称，必须
+//  *     @param  {String}  params.Method      请求的方法，可选
+//  *     @param  {String}  params.Expires     签名超时时间，单位秒，可选
+//  * @param  {Function}  callback             回调函数，必须
+//  *     @return  {Object}    err             请求失败的错误，如果请求成功，则为空。
+//  *     @return  {Object}    data            返回的数据
+//  */
+// function getObjectUrl(params, callback) {
+//     var self = this;
+//     var url = getUrl({
+//         domain: self.options.Domain,
+//         bucket: params.Bucket,
+//         region: params.Region,
+//         object: params.Key,
+//     });
+//     if (params.Sign !== undefined && !params.Sign) {
+//         callback(null, {Url: url});
+//         return url;
+//     }
+//     var authorization = getAuthorizationAsync.call(this, {
+//         Method: params.Method || 'get',
+//         Key: params.Key,
+//     }, function (AuthData) {
+//         if (!callback) return;
+//         var result = {
+//             Url: url + '?sign=' + encodeURIComponent(AuthData.Authorization),
+//         };
+//         AuthData.XCosSecurityToken && (result.XCosSecurityToken = AuthData.XCosSecurityToken);
+//         AuthData.ClientIP && (result.ClientIP = AuthData.ClientIP);
+//         AuthData.ClientUA && (result.ClientUA = AuthData.ClientUA);
+//         AuthData.Token && (result.Token = AuthData.Token);
+//         setTimeout(function () {
+//             callback(null, result);
+//         });
+//     });
+//     if (authorization) {
+//         return url + '?sign=' + encodeURIComponent(authorization);
+//     } else {
+//         return url;
+//     }
+// }
 
 
 /**
@@ -2051,10 +2051,13 @@ function _submitRequest(params, callback) {
 
     opt.headers['User-Agent'] = 'cos-nodejs-sdk-v5-' + pkg.version;
     if (this.options.Proxy) {
-        opt.proxy = this.options.Proxy;
+        console.warn('[slim] Proxy is not supported in slim')
+        throw new Error('[slim] Proxy is not supported in slim')
+        // opt.proxy = this.options.Proxy;
     }
 
-    var sender = REQUEST(opt);
+    var request = slimRequest(opt.url, opt.qs, opt.method, opt.headers)
+    request.end(json ? JSON.stringify(body) : body)
     var retResponse;
     var hasReturned;
     var cb = function (err, data) {
@@ -2081,26 +2084,26 @@ function _submitRequest(params, callback) {
         }
         return json;
     };
-    sender.on('error', function (err) {
+    request.on('error', function (err) {
         cb({error: err});
     });
-    sender.on('response', function (response) {
+    request.on('response', function (response) {
         retResponse = response;
         var responseContentLength = response.headers['content-length'] || 0;
         var statusCode = response.statusCode;
         var chunkList = [];
         var statusSuccess = statusCode === 200 || statusCode === 204 || statusCode === 206;
         if (statusSuccess && params.outputStream) {
-            sender.on('end', function () {
+            response.on('end', function () {
                 cb(null, {});
             });
         } else if (responseContentLength >= process.binding('buffer').kMaxLength) {
             cb({error: 'file size large than ' + process.binding('buffer').kMaxLength + ', please use "Output" Stream to getObject.'});
         } else {
-            sender.on('data', function (chunk) {
+            response.on('data', function (chunk) {
                 chunkList.push(chunk);
             });
-            sender.on('end', function () {
+            response.on('end', function () {
                 var json;
                 try {
                     var body = Buffer.concat(chunkList);
@@ -2132,7 +2135,7 @@ function _submitRequest(params, callback) {
     // kill task
     var killTask = function (data) {
         if (data.TaskId === TaskId) {
-            sender && sender.abort && sender.abort();
+            request && request.abort && request.abort();
             self.off('inner-kill-task', killTask);
         }
     };
@@ -2143,11 +2146,11 @@ function _submitRequest(params, callback) {
         var contentLength = opt.headers['Content-Length'];
         var time0 = Date.now();
         var size0 = 0;
-        sender.on('drain', function () {
+        request.on('drain', function () {
             var time1 = Date.now();
             var loaded = 0;
             try {
-                loaded = sender.req.connection.bytesWritten - sender.req._header.length;
+                loaded = request.connection.bytesWritten;
             } catch (e) {
             }
             var total = contentLength;
@@ -2169,9 +2172,9 @@ function _submitRequest(params, callback) {
         var size0 = 0;
         var loaded = 0;
         var total = 0;
-        sender.on('response', function (res) {
-            total = res.headers['content-length'];
-            sender.on('data', function (chunk) {
+        request.on('response', function (response) {
+            total = response.headers['content-length'];
+            response.on('data', function (chunk) {
                 loaded += chunk.length;
                 var time1 = Date.now();
                 var speed = parseInt((loaded - size0) / ((time1 - time0) / 1000) * 100) / 100;
@@ -2190,22 +2193,24 @@ function _submitRequest(params, callback) {
 
     // pipe 输入
     if (params.inputStream) {
-        params.inputStream.on('error', function (err) {
-            sender.abort();
-            callback(err);
-        });
-        params.inputStream.pipe(sender);
+        console.warn('[slim] inputStream is not supported in slim')
+        throw new Error('[slim] inputStream is not supported in slim')
+        // params.inputStream.on('error', function (err) {
+        //     sender.abort();
+        //     callback(err);
+        // });
+        // params.inputStream.pipe(sender);
     }
     // pipe 输出
     if (params.outputStream) {
-        params.outputStream.on('error', function (err) {
-            sender.abort();
-            callback(err)
-        });
-        sender.pipe(params.outputStream);
+        console.warn('[slim] outputStream is not supported in slim')
+        throw new Error('[slim] outputStream is not supported in slim')
+        // params.outputStream.on('error', function (err) {
+        //     sender.abort();
+        //     callback(err)
+        // });
+        // sender.pipe(params.outputStream);
     }
-
-    return sender;
 
 }
 
@@ -2213,53 +2218,53 @@ function _submitRequest(params, callback) {
 var API_MAP = {
     // Bucket 相关方法
     getService: getService,
-    putBucket: putBucket,
+    // putBucket: putBucket,
     getBucket: getBucket,
     headBucket: headBucket,
-    deleteBucket: deleteBucket,
-    getBucketAcl: getBucketAcl,
-    putBucketAcl: putBucketAcl,
-    getBucketCors: getBucketCors,
-    putBucketCors: putBucketCors,
-    deleteBucketCors: deleteBucketCors,
-    getBucketLocation: getBucketLocation,
-    putBucketTagging: putBucketTagging,
-    getBucketTagging: getBucketTagging,
-    deleteBucketTagging: deleteBucketTagging,
-    getBucketPolicy: getBucketPolicy,
-    putBucketPolicy: putBucketPolicy,
-    getBucketLifecycle: getBucketLifecycle,
-    putBucketLifecycle: putBucketLifecycle,
-    deleteBucketLifecycle: deleteBucketLifecycle,
-    putBucketVersioning: putBucketVersioning,
-    getBucketVersioning: getBucketVersioning,
-    putBucketReplication: putBucketReplication,
-    getBucketReplication: getBucketReplication,
-    deleteBucketReplication: deleteBucketReplication,
+    // deleteBucket: deleteBucket,
+    // getBucketAcl: getBucketAcl,
+    // putBucketAcl: putBucketAcl,
+    // getBucketCors: getBucketCors,
+    // putBucketCors: putBucketCors,
+    // deleteBucketCors: deleteBucketCors,
+    // getBucketLocation: getBucketLocation,
+    // putBucketTagging: putBucketTagging,
+    // getBucketTagging: getBucketTagging,
+    // deleteBucketTagging: deleteBucketTagging,
+    // getBucketPolicy: getBucketPolicy,
+    // putBucketPolicy: putBucketPolicy,
+    // getBucketLifecycle: getBucketLifecycle,
+    // putBucketLifecycle: putBucketLifecycle,
+    // deleteBucketLifecycle: deleteBucketLifecycle,
+    // putBucketVersioning: putBucketVersioning,
+    // getBucketVersioning: getBucketVersioning,
+    // putBucketReplication: putBucketReplication,
+    // getBucketReplication: getBucketReplication,
+    // deleteBucketReplication: deleteBucketReplication,
 
     // Object 相关方法
     getObject: getObject,
-    headObject: headObject,
+    // headObject: headObject,
     putObject: putObject,
-    deleteObject: deleteObject,
-    getObjectAcl: getObjectAcl,
-    putObjectAcl: putObjectAcl,
-    optionsObject: optionsObject,
+    // deleteObject: deleteObject,
+    // getObjectAcl: getObjectAcl,
+    // putObjectAcl: putObjectAcl,
+    // optionsObject: optionsObject,
     putObjectCopy: putObjectCopy,
 
-    // 分块上传相关方法
-    uploadPartCopy: uploadPartCopy,
-    multipartInit: multipartInit,
-    multipartUpload: multipartUpload,
-    multipartComplete: multipartComplete,
-    multipartList: multipartList,
-    multipartListPart: multipartListPart,
-    multipartAbort: multipartAbort,
-    deleteMultipleObject: deleteMultipleObject,
+    // // 分块上传相关方法
+    // uploadPartCopy: uploadPartCopy,
+    // multipartInit: multipartInit,
+    // multipartUpload: multipartUpload,
+    // multipartComplete: multipartComplete,
+    // multipartList: multipartList,
+    // multipartListPart: multipartListPart,
+    // multipartAbort: multipartAbort,
+    // deleteMultipleObject: deleteMultipleObject,
 
     // 工具方法
-    getObjectUrl: getObjectUrl,
-    getAuth: getAuth,
+    // getObjectUrl: getObjectUrl,
+    // getAuth: getAuth,
 };
 
 function warnOldApi(apiName, fn) {

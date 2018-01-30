@@ -1,0 +1,13 @@
+{
+  "presets": [ [ "env", { "targets": { "node": 8 } } ] ],
+  "plugins": [
+    [ "transform-class-properties" ],
+    [ "transform-object-rest-spread", { "useBuiltIns": true } ],
+    [ "minify-simplify" ],
+    [ "minify-mangle-names" ],
+    [ "minify-constant-folding" ],
+    [ "minify-guarded-expressions" ],
+    [ "minify-dead-code-elimination" ]
+  ],
+  "comments": false
+}

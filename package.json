@@ -1,35 +1,11 @@
 {
-  "name": "cos-nodejs-sdk-v5",
+  "name": "cos-nodejs-sdk-slim",
   "version": "2.2.6",
-  "description": "cos nodejs sdk v5",
-  "main": "index.js",
-  "scripts": {
-    "test": "mocha",
-    "demo": "node demo/demo.js",
-    "demo-sts": "node demo/demo-sts.js"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/tencentyun/cos-nodejs-sdk-v5.git"
-  },
-  "keywords": [
-    "tencent",
-    "tencent cloud",
-    "qcloud",
-    "cos",
-    "cos-sdk"
-  ],
-  "author": "carsonxu",
+  "description": "size reduce for https://github.com/tencentyun/cos-nodejs-sdk-v5",
   "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/tencentyun/cos-nodejs-sdk-v5/issues"
-  },
-  "homepage": "https://github.com/tencentyun/cos-nodejs-sdk-v5#readme",
-  "dependencies": {
-    "request": "^2.81.0",
-    "xml2js": "^0.4.17"
-  },
-  "devDependencies": {
-    "mocha": "^4.0.1"
-  }
+  "engines": { "node": ">=8", "npm": ">=5" },
+  "main": "library/cos.js",
+  "scripts": { "prepack": "babel ./sdk --out-dir ./library" },
+  "dependencies": { "xml2js": "^0.4.17" },
+  "devDependencies": { "dev-dep-babel": "^0.0.12" }
 }

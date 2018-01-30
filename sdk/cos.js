@@ -4,7 +4,7 @@ var util = require('./util');
 var event = require('./event');
 var task = require('./task');
 var base = require('./base');
-var advance = require('./advance');
+// var advance = require('./advance');
 var pkg = require('../package.json');
 
 
@@ -32,7 +32,7 @@ var COS = function (options) {
 };
 
 util.extend(COS.prototype, base);
-util.extend(COS.prototype, advance);
+// util.extend(COS.prototype, advance);
 
 COS.getAuthorization = util.getAuth;
 COS.version = pkg.version;
