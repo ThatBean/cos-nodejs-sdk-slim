@@ -14,3 +14,5 @@ remaining base method:
 - getObject
 - putObject
 - putObjectCopy
+- deleteObject
+- deleteMultipleObject

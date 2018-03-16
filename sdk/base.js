@@ -1120,42 +1120,42 @@ function putObject(params, callback) {
     });
 }
 
-// /**
-//  * 删除 object
-//  * @param  {Object}  params                     参数对象，必须
-//  *     @param  {String}  params.Bucket          Bucket名称，必须
-//  *     @param  {String}  params.Region          地域名称，必须
-//  *     @param  {String}  params.Key             object名称，必须
-//  * @param  {Function}  callback                 回调函数，必须
-//  * @param  {Object}  err                        请求失败的错误，如果请求成功，则为空。
-//  * @param  {Object}  data                       删除操作成功之后返回的数据
-//  */
-// function deleteObject(params, callback) {
-//     submitRequest.call(this, {
-//         method: 'DELETE',
-//         Bucket: params.Bucket,
-//         Region: params.Region,
-//         Key: params.Key,
-//         headers: params.Headers,
-//         VersionId: params.VersionId,
-//     }, function (err, data) {
-//         if (err) {
-//             var statusCode = err.statusCode;
-//             if (statusCode && statusCode === 204) {
-//                 return callback(null, {statusCode: statusCode});
-//             } else if (statusCode && statusCode === 404) {
-//                 return callback(null, {BucketNotFound: true, statusCode: statusCode,});
-//             } else {
-//                 return callback(err);
-//             }
-//         }
-//         callback(null, {
-//             statusCode: data.statusCode,
-//             headers: data.headers,
-//         });
-//     });
-// }
-//
+/**
+ * 删除 object
+ * @param  {Object}  params                     参数对象，必须
+ *     @param  {String}  params.Bucket          Bucket名称，必须
+ *     @param  {String}  params.Region          地域名称，必须
+ *     @param  {String}  params.Key             object名称，必须
+ * @param  {Function}  callback                 回调函数，必须
+ * @param  {Object}  err                        请求失败的错误，如果请求成功，则为空。
+ * @param  {Object}  data                       删除操作成功之后返回的数据
+ */
+function deleteObject(params, callback) {
+    submitRequest.call(this, {
+        method: 'DELETE',
+        Bucket: params.Bucket,
+        Region: params.Region,
+        Key: params.Key,
+        headers: params.Headers,
+        VersionId: params.VersionId,
+    }, function (err, data) {
+        if (err) {
+            var statusCode = err.statusCode;
+            if (statusCode && statusCode === 204) {
+                return callback(null, {statusCode: statusCode});
+            } else if (statusCode && statusCode === 404) {
+                return callback(null, {BucketNotFound: true, statusCode: statusCode,});
+            } else {
+                return callback(err);
+            }
+        }
+        callback(null, {
+            statusCode: data.statusCode,
+            headers: data.headers,
+        });
+    });
+}
+
 // /**
 //  * 获取 object 的 权限列表
 //  * @param  {Object}  params                         参数对象，必须
@@ -1361,44 +1361,44 @@ function putObjectCopy(params, callback) {
 //     });
 // }
 //
-// function deleteMultipleObject(params, callback) {
-//     var Objects = params.Objects || {};
-//     var Quiet = params.Quiet;
-//
-//     var xml = util.json2xml({Delete: {Object: Objects, Quiet: Quiet || false}});
-//
-//     var headers = params.Headers;
-//     headers['Content-Type'] = 'application/xml';
-//     headers['Content-MD5'] = util.binaryBase64(util.md5(xml));
-//
-//     submitRequest.call(this, {
-//         method: 'POST',
-//         Bucket: params.Bucket,
-//         Region: params.Region,
-//         body: xml,
-//         action: '/?delete',
-//         headers: headers,
-//     }, function (err, data) {
-//         if (err) {
-//             return callback(err);
-//         }
-//         var Deleted = data.DeleteResult.Deleted || [];
-//         var Errors = data.DeleteResult.Error || [];
-//
-//         Deleted = util.isArray(Deleted) ? Deleted : [Deleted];
-//         Errors = util.isArray(Errors) ? Errors : [Errors];
-//
-//         var result = util.clone(data.DeleteResult);
-//         util.extend(result, {
-//             Error: Errors,
-//             Deleted: Deleted,
-//             statusCode: data.statusCode,
-//             headers: data.headers,
-//         });
-//         callback(null, result);
-//     });
-// }
-//
+function deleteMultipleObject(params, callback) {
+    var Objects = params.Objects || {};
+    var Quiet = params.Quiet;
+
+    var xml = util.json2xml({Delete: {Object: Objects, Quiet: Quiet || false}});
+
+    var headers = params.Headers;
+    headers['Content-Type'] = 'application/xml';
+    headers['Content-MD5'] = util.binaryBase64(util.md5(xml));
+
+    submitRequest.call(this, {
+        method: 'POST',
+        Bucket: params.Bucket,
+        Region: params.Region,
+        body: xml,
+        action: '/?delete',
+        headers: headers,
+    }, function (err, data) {
+        if (err) {
+            return callback(err);
+        }
+        var Deleted = data.DeleteResult.Deleted || [];
+        var Errors = data.DeleteResult.Error || [];
+
+        Deleted = util.isArray(Deleted) ? Deleted : [Deleted];
+        Errors = util.isArray(Errors) ? Errors : [Errors];
+
+        var result = util.clone(data.DeleteResult);
+        util.extend(result, {
+            Error: Errors,
+            Deleted: Deleted,
+            statusCode: data.statusCode,
+            headers: data.headers,
+        });
+        callback(null, result);
+    });
+}
+
 // function restoreObject(params, callback) {
 //     var headers = params.Headers;
 //     if (!params['RestoreRequest']) {
@@ -2194,12 +2194,12 @@ var API_MAP = {
     // headObject: headObject,
     // listObjectVersions: listObjectVersions,
     putObject: putObject,
-    // deleteObject: deleteObject,
+    deleteObject: deleteObject,
     // getObjectAcl: getObjectAcl,
     // putObjectAcl: putObjectAcl,
     // optionsObject: optionsObject,
     putObjectCopy: putObjectCopy,
-    // deleteMultipleObject: deleteMultipleObject,
+    deleteMultipleObject: deleteMultipleObject,
     // restoreObject: restoreObject,
 
     // 分块上传相关方法

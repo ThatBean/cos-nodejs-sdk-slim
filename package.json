@@ -1,6 +1,6 @@
 {
   "name": "cos-nodejs-sdk-slim",
-  "version": "2.3.0-dev.0",
+  "version": "2.3.0-dev.1",
   "description": "size reduce for https://github.com/tencentyun/cos-nodejs-sdk-v5",
   "license": "ISC",
   "engines": { "node": ">=8", "npm": ">=5" },
